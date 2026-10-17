@@ -277,15 +277,9 @@ function Index() {
                   <Link to="/admin"><ShieldCheck className="size-4" /> لوحة التحكم</Link>
                 </Button>
               )}
-              {canPublish ? (
-                <Button size="sm" onClick={() => setUploadOpen(true)} disabled={needsName}>
-                  <Plus className="size-4" /> إضافة درس
-                </Button>
-              ) : roles.isSuccess && (
-                <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-                  <LockIcon className="size-3" /> النشر متاح فقط للكتّاب المعتمدين
-                </span>
-              )}
+              <Button size="sm" onClick={() => setUploadOpen(true)} disabled={needsName}>
+                <Plus className="size-4" /> {canPublish ? "إضافة درس" : "إضافة ملخص"}
+              </Button>
               <Button size="icon" variant="ghost" onClick={signOut} aria-label="تسجيل الخروج">
                 <LogOut className="size-4" />
               </Button>
