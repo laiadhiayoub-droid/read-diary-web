@@ -25,6 +25,22 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
   const allowed = canReadFormatted(roles);
   const canEdit = roles.includes("admin") || roles.includes("writer");
   const pinch = useRef<{d:number;scale:number}|null>(null);
+  const [downloading,setDownloading] = useState(false);
+  const [lightbox,setLightbox] = useState(false);
+  async function downloadImage() {
+    if(!image.data || !page || downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(image.data);
+      if(!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${page.title}.jpg`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    } catch { toast.error("تعذّر تحميل الصورة"); } finally { setDownloading(false); }
+  }
   useEffect(()=>{setIndex(Math.max(0,pages.findIndex(p=>p.id===initialId)));setMode("original");setFailure(null);setEditing(false);setDraft(null);},[initialId]);
   const page=initialId ? pages[index] : undefined;
   useEffect(()=>{setScale(1);setEditing(false);setDraft(null);},[page?.id]);
@@ -83,7 +99,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
       {mode === "original" && <div className="flex justify-center gap-2 border-b p-2">
         <Button variant="ghost" size="icon" aria-label="تكبير" onClick={()=>setScale(s=>Math.min(3,s+0.25))}><ZoomIn className="size-4"/></Button>
         <Button variant="ghost" size="icon" aria-label="تصغير" onClick={()=>setScale(s=>Math.max(0.5,s-0.25))}><ZoomOut className="size-4"/></Button>
-        {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} download={`${page?.title}.jpg`} target="_blank" rel="noreferrer" aria-label="تحميل"><Download className="size-4"/></a></Button>}
+        {image.data && <Button variant="ghost" size="icon" disabled={downloading} onClick={downloadImage} aria-label="تحميل">{downloading?<Loader2 className="size-4 animate-spin"/>:<Download className="size-4"/>}</Button>}
         {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} target="_blank" rel="noreferrer" aria-label="فتح بالحجم الكامل"><ExternalLink className="size-4"/></a></Button>}
       </div>}
       {editing && <div className="flex justify-center gap-2 border-b p-2">
@@ -92,7 +108,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
       </div>}
       <div className="overflow-y-auto bg-muted p-3 sm:p-6 min-h-64 max-h-[70vh]">
         {mode==="original" ? image.data ? <div className="overflow-auto" style={{touchAction:"pan-x pan-y"}} onTouchMove={onTouchMove} onTouchEnd={()=>{pinch.current=null;}}>
-            <img className="mx-auto max-w-full h-auto select-none" style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/>
+            <img className="mx-auto max-w-full h-auto select-none cursor-zoom-in" onClick={()=>setLightbox(true)} style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/>
           </div> : <p className="text-center py-16">{image.isError?"تعذّر تحميل الصورة.":"جارٍ تحميل الصفحة…"}</p>
         : !allowed ? <div className="text-center py-16 space-y-4"><Lock className="size-9 mx-auto text-primary"/><p>{LOCKED_NOTEBOOK_MESSAGE}</p></div>
         : editing && draft ? <article className="digital-sheet mx-auto" dir={draft.direction}>
@@ -137,6 +153,10 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
         <span className="text-sm text-muted-foreground">{index+1} / {pages.length}</span>
         <Button variant="outline" size="sm" disabled={index>=pages.length-1 || busy} onClick={()=>{setIndex(i=>i+1);setFailure(null);}}>التالية<ArrowLeft className="size-4"/></Button>
       </div>
+      {lightbox && image.data && <div className="fixed inset-0 z-[60] bg-black/90 flex items-center justify-center p-4 cursor-zoom-out" onClick={()=>setLightbox(false)}>
+        <img src={image.data} alt={page?.title} className="max-w-full max-h-full object-contain rounded-md"/>
+        <Button variant="ghost" size="icon" className="absolute top-4 end-4 text-white hover:bg-white/20" aria-label="إغلاق" onClick={()=>setLightbox(false)}><X className="size-5"/></Button>
+      </div>}
     </DialogContent>
   </Dialog>;
 }

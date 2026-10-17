@@ -12,7 +12,7 @@ export const SUBJECTS = [
 export type SubjectId = (typeof SUBJECTS)[number]["id"];
 
 export const CONTENT_TYPES = [
-  { id: "lesson", label: "درس" },
+  { id: "lesson", label: "كراس" },
   { id: "summary", label: "ملخص" },
 ] as const;
 

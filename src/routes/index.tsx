@@ -4,8 +4,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   BookOpen, LogOut, Plus, Search, ArrowUp, ArrowDown, Link2, Loader2, ImagePlus, X,
-  NotebookPen, ShieldCheck, Lock as LockIcon, BookMarked, FileText, ArrowRight,
-  ZoomIn, ZoomOut, Download, SlidersHorizontal,
+  NotebookPen, ShieldCheck, BookMarked, FileText, ArrowRight,
+  SlidersHorizontal, Star, Trash2, Share2, GraduationCap,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,9 +48,10 @@ type Lesson = {
 };
 type Profile = { id: string; full_name: string | null };
 type Book = { userId: string; subject: string; count: number; hasNew: boolean };
-type Filters = { student: string; subject: string; type: string; semester: string };
-const EMPTY_FILTERS: Filters = { student: "all", subject: "all", type: "all", semester: "all" };
+type Filters = { subject: string; type: string; semester: string; unit: string };
+const EMPTY_FILTERS: Filters = { subject: "all", type: "all", semester: "all", unit: "all" };
 const NEW_DAYS = 7;
+type View = "books" | "summaries" | "favorites";
 
 function useUser() {
   const [user, setUser] = useState<User | null>(null);
@@ -106,22 +107,72 @@ function Index() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [zoom, setZoom] = useState<Lesson | null>(null);
   const [openBook, setOpenBook] = useState<Book | null>(null);
+  const [view, setView] = useState<View>("books");
+  const [summarySubject, setSummarySubject] = useState("all");
+  const [deleting, setDeleting] = useState<Lesson | null>(null);
+
+  const bookmarks = useQuery({
+    queryKey: ["bookmarks", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      if (!user) return [] as string[];
+      const { data, error } = await supabase.from("bookmarks").select("lesson_id").eq("user_id", user.id);
+      if (error) throw error;
+      return data.map((b) => b.lesson_id);
+    },
+  });
+  const bookmarked = useMemo(() => new Set(bookmarks.data ?? []), [bookmarks.data]);
+  async function toggleBookmark(lessonId: string) {
+    if (!user) return;
+    if (bookmarked.has(lessonId)) {
+      const { error } = await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("lesson_id", lessonId);
+      if (error) { toast.error("تعذّر تحديث المفضلة"); return; }
+    } else {
+      const { error } = await supabase.from("bookmarks").insert({ user_id: user.id, lesson_id: lessonId });
+      if (error) { toast.error("تعذّر تحديث المفضلة"); return; }
+    }
+    qc.invalidateQueries({ queryKey: ["bookmarks", user.id] });
+  }
+
+  async function deleteLesson() {
+    const l = deleting;
+    if (!l) return;
+    const ids = [l.id, ...(lessons.data ?? []).filter((x) => x.parent_lesson_id === l.id).map((x) => x.id)];
+    const paths = (lessons.data ?? []).filter((x) => ids.includes(x.id)).map((x) => x.image_path);
+    const { error } = await supabase.from("lessons").delete().in("id", ids);
+    if (error) { toast.error("تعذّر الحذف"); return; }
+    if (paths.length) await supabase.storage.from("lessons-images").remove(paths);
+    toast.success("تم الحذف");
+    setDeleting(null);
+    qc.invalidateQueries({ queryKey: ["lessons"] });
+  }
+
+  function shareLesson(l: Lesson) {
+    const url = `${window.location.origin}/?lesson=${l.id}`;
+    void navigator.clipboard.writeText(url).then(() => toast.success("تم نسخ الرابط"), () => toast.error("تعذّر نسخ الرابط"));
+  }
+
+  // Open a shared lesson link (?lesson=<id>)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("lesson");
+    if (!id || !lessons.data || zoom) return;
+    const target = lessons.data.find((l) => l.id === id);
+    if (!target) return;
+    setOpenBook({ userId: target.user_id, subject: target.subject, count: 0, hasNew: false });
+    setZoom(target);
+  }, [lessons.data, zoom]);
 
   const nameOf = (id: string) => profiles.data?.find((p) => p.id === id)?.full_name || "تلميذ";
-  const uploaders = useMemo(() => {
-    const ids = new Set((lessons.data ?? []).map((l) => l.user_id));
-    return (profiles.data ?? []).filter((p) => ids.has(p.id) && p.full_name);
-  }, [lessons.data, profiles.data]);
 
   // Tier 1: book covers — one card per (student, subject) notebook
   const books = useMemo(() => {
     const cutoff = Date.now() - NEW_DAYS * 24 * 60 * 60 * 1000;
     const map = new Map<string, Book>();
     for (const l of lessons.data ?? []) {
-      if (filters.student !== "all" && l.user_id !== filters.student) continue;
       if (filters.subject !== "all" && l.subject !== filters.subject) continue;
       if (filters.type !== "all" && l.content_type !== filters.type) continue;
       if (filters.semester !== "all" && l.semester !== filters.semester) continue;
+      if (filters.unit !== "all" && l.unit !== filters.unit) continue;
       const key = `${l.user_id}:${l.subject}`;
       const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0, hasNew: false };
       b.count++;
@@ -142,6 +193,37 @@ function Index() {
         (!term || [l.title, l.domain, l.unit].some((v) => v?.toLowerCase().includes(term)))),
     );
   }, [lessons.data, openBook, bookQ]);
+
+  // Group notebook pages by semester, then by unit
+  const groupedBookLessons = useMemo(() => {
+    const groups: { semester: string; units: { unit: string; items: Lesson[] }[] }[] = [];
+    for (const l of bookLessons) {
+      const s = l.semester || "none";
+      const u = l.unit || "none";
+      let sg = groups.find((g) => g.semester === s);
+      if (!sg) { sg = { semester: s, units: [] }; groups.push(sg); }
+      let ug = sg.units.find((x) => x.unit === u);
+      if (!ug) { ug = { unit: u, items: [] }; sg.units.push(ug); }
+      ug.items.push(l);
+    }
+    return groups;
+  }, [bookLessons]);
+
+  const unitOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of lessons.data ?? []) if (l.unit) set.add(l.unit);
+    return [...set].sort((a, b) => a.localeCompare(b, "ar"));
+  }, [lessons.data]);
+
+  const summaries = useMemo(() => {
+    return (lessons.data ?? [])
+      .filter((l) => l.content_type === "summary" && (summarySubject === "all" || l.subject === summarySubject))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [lessons.data, summarySubject]);
+
+  const favoriteLessons = useMemo(() => {
+    return (lessons.data ?? []).filter((l) => bookmarked.has(l.id));
+  }, [lessons.data, bookmarked]);
 
   const isOwnerBook = !!user && openBook?.userId === user.id;
 
@@ -172,6 +254,7 @@ function Index() {
     setFilters(EMPTY_FILTERS);
     setBookQ("");
     setOpenBook(null);
+    setView("books");
     toast("تم تسجيل الخروج");
   }
 
@@ -194,15 +277,9 @@ function Index() {
                   <Link to="/admin"><ShieldCheck className="size-4" /> لوحة التحكم</Link>
                 </Button>
               )}
-              {canPublish ? (
-                <Button size="sm" onClick={() => setUploadOpen(true)} disabled={needsName}>
-                  <Plus className="size-4" /> إضافة درس
-                </Button>
-              ) : roles.isSuccess && (
-                <span className="hidden md:inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-                  <LockIcon className="size-3" /> النشر متاح فقط للكتّاب المعتمدين
-                </span>
-              )}
+              <Button size="sm" onClick={() => setUploadOpen(true)} disabled={needsName}>
+                <Plus className="size-4" /> {canPublish ? "إضافة درس" : "إضافة ملخص"}
+              </Button>
               <Button size="icon" variant="ghost" onClick={signOut} aria-label="تسجيل الخروج">
                 <LogOut className="size-4" />
               </Button>
@@ -240,6 +317,11 @@ function Index() {
                 </h2>
                 <p className="text-sm text-muted-foreground">{bookLessons.length} صفحة</p>
               </div>
+              {bookLessons[0] && (
+                <Button variant="outline" size="sm" onClick={() => { const first = bookLessons[0]; if (first) shareLesson(first); }}>
+                  <Share2 className="size-4" /> نسخ الرابط
+                </Button>
+              )}
             </div>
 
             <div className="relative max-w-md">
@@ -254,37 +336,123 @@ function Index() {
                 لا توجد دروس في هذا الكراس بعد.
               </div>
             ) : (
-              <ol className="space-y-2">
-                {bookLessons.map((l, i) => (
-                  <LessonRow key={l.id} lesson={l}
-                    parent={lessons.data?.find((p) => p.id === l.parent_lesson_id)}
-                    onOpen={() => setZoom(l)}
-                    controls={isOwnerBook ? {
-                      up: i > 0 ? () => move(i, -1) : undefined,
-                      down: i < bookLessons.length - 1 ? () => move(i, 1) : undefined,
-                    } : undefined} />
+              <div className="space-y-6">
+                {groupedBookLessons.map((sg) => (
+                  <section key={sg.semester} className="space-y-3">
+                    <h3 className="flex items-center gap-2 text-base font-extrabold text-primary">
+                      <span className="h-px flex-1 bg-border" />
+                      {sg.semester === "none" ? "بدون فصل" : semesterLabel(sg.semester)}
+                      <span className="h-px flex-1 bg-border" />
+                    </h3>
+                    {sg.units.map((ug) => (
+                      <div key={ug.unit} className="space-y-2">
+                        {ug.unit !== "none" && (
+                          <p className="text-sm font-bold text-muted-foreground">{ug.unit}</p>
+                        )}
+                        <ol className="space-y-2">
+                          {ug.items.map((l) => {
+                            const i = bookLessons.indexOf(l);
+                            return (
+                              <LessonRow key={l.id} lesson={l}
+                                parent={lessons.data?.find((p) => p.id === l.parent_lesson_id)}
+                                starred={bookmarked.has(l.id)} onStar={() => toggleBookmark(l.id)}
+                                onShare={() => shareLesson(l)}
+                                onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                                onOpen={() => setZoom(l)}
+                                controls={isOwnerBook ? {
+                                  up: i > 0 ? () => move(i, -1) : undefined,
+                                  down: i < bookLessons.length - 1 ? () => move(i, 1) : undefined,
+                                } : undefined} />
+                            );
+                          })}
+                        </ol>
+                      </div>
+                    ))}
+                  </section>
                 ))}
-              </ol>
+              </div>
             )}
           </section>
         ) : (
           /* ============ Tier 1: Book Covers (أغلفة الكراريس) ============ */
           <>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-baseline gap-2">
-                <h2 className="text-xl font-extrabold">كراريس القسم</h2>
-                <span className="text-sm text-muted-foreground">{books.length} كراس</span>
+                <h2 className="text-xl font-extrabold">
+                  {view === "books" ? "كراريس القسم" : view === "summaries" ? "الملخصات" : "مفضلاتي"}
+                </h2>
+                <span className="text-sm text-muted-foreground">
+                  {view === "books" ? `${books.length} كراس` : view === "summaries" ? `${summaries.length} ملخص` : `${favoriteLessons.length} عنصر`}
+                </span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
-                className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
-                <SlidersHorizontal className="size-4" /> تصفية
-                {Object.values(filters).filter((v) => v !== "all").length > 0 && (
-                  <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
-                )}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={view === "summaries" ? "default" : "outline"} size="sm" onClick={() => setView(view === "summaries" ? "books" : "summaries")}>
+                  <GraduationCap className="size-4" /> الملخصات
+                </Button>
+                <Button variant={view === "favorites" ? "default" : "outline"} size="sm" onClick={() => setView(view === "favorites" ? "books" : "favorites")}>
+                  <Star className="size-4" /> مفضلاتي
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
+                  className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
+                  <SlidersHorizontal className="size-4" /> تصفية
+                  {Object.values(filters).filter((v) => v !== "all").length > 0 && (
+                    <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
+                  )}
+                </Button>
+              </div>
             </div>
 
-            {lessons.isLoading ? (
+            {view === "summaries" ? (
+              <section className="space-y-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {[{ id: "all", label: "كل المواد" }, ...SUBJECTS].map((s) => (
+                    <button key={s.id} onClick={() => setSummarySubject(s.id)}
+                      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition ${summarySubject === s.id ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                {summaries.length === 0 ? (
+                  <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
+                    <GraduationCap className="mx-auto mb-3 size-8" />
+                    لا توجد ملخصات هنا بعد.
+                  </div>
+                ) : (
+                  <ol className="space-y-2">
+                    {summaries.map((l) => (
+                      <LessonRow key={l.id} lesson={l} author={nameOf(l.user_id)}
+                        starred={bookmarked.has(l.id)} onStar={() => toggleBookmark(l.id)}
+                        onShare={() => shareLesson(l)}
+                        onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                        onOpen={() => {
+                          setOpenBook({ userId: l.user_id, subject: l.subject, count: 0, hasNew: false });
+                          setZoom(l);
+                        }} />
+                    ))}
+                  </ol>
+                )}
+              </section>
+            ) : view === "favorites" ? (
+              favoriteLessons.length === 0 ? (
+                <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
+                  <Star className="mx-auto mb-3 size-8" />
+                  لم تضف شيئاً إلى المفضلة بعد. اضغط نجمة أي درس أو ملخص لحفظه هنا.
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {favoriteLessons.map((l) => (
+                    <LessonRow key={l.id} lesson={l} author={nameOf(l.user_id)}
+                      starred={true} onStar={() => toggleBookmark(l.id)}
+                      onShare={() => shareLesson(l)}
+                      onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                      onOpen={() => {
+                        setOpenBook({ userId: l.user_id, subject: l.subject, count: 0, hasNew: false });
+                        setZoom(l);
+                      }} />
+                  ))}
+                </ol>
+              )
+            ) : lessons.isLoading ? (
               <div className="py-20 grid place-items-center"><Loader2 className="animate-spin text-primary" /></div>
             ) : books.length === 0 ? (
               <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
@@ -305,10 +473,20 @@ function Index() {
       <DhikrPill />
 
       {needsName && user && <NameDialog userId={user.id} onDone={() => qc.invalidateQueries({ queryKey: ["profiles"] })} />}
-      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters}
-        uploaders={uploaders} myId={user?.id} myName={myProfile?.full_name} />
+      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters} units={unitOptions} />
+      <Dialog open={!!deleting} onOpenChange={(o) => { if (!o) setDeleting(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="pe-8">تأكيد الحذف</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">هل أنت متأكد من الحذف؟ سيُحذف «{deleting?.title}» وكل صفحاته التابعة نهائياً.</p>
+          <div className="flex gap-2">
+            <Button variant="destructive" className="flex-1" onClick={deleteLesson}>نعم، احذف</Button>
+            <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>إلغاء</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {user && (
         <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} userId={user.id}
+          canPublishLessons={canPublish}
           defaultSubject={filters.subject === "all" ? "spanish" : filters.subject}
           myLessons={(lessons.data ?? []).filter((l) => l.user_id === user.id)}
           onDone={() => qc.invalidateQueries({ queryKey: ["lessons"] })} />
@@ -344,9 +522,9 @@ function BookCover({ book, onOpen }: { book: Book; onOpen: () => void }) {
 }
 
 /* ---------- Filter modal ---------- */
-function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, myName }: {
+function FilterDialog({ open, onOpenChange, filters, onApply, units }: {
   open: boolean; onOpenChange: (o: boolean) => void; filters: Filters; onApply: (f: Filters) => void;
-  uploaders: Profile[]; myId: string | undefined; myName: string | null | undefined;
+  units: string[];
 }) {
   const [draft, setDraft] = useState<Filters>(filters);
   useEffect(() => { if (open) setDraft(filters); }, [open, filters]);
@@ -354,7 +532,7 @@ function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, m
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> تصفية الكراريس</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="flex items-center gap-2 pe-8"><SlidersHorizontal className="size-5 shrink-0" /> تصفية الكراريس</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>المادة</Label>
@@ -377,25 +555,22 @@ function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, m
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>التلميذ</Label>
-            <Select value={draft.student} onValueChange={set("student")}>
-              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">جميع التلاميذ</SelectItem>
-                {myId && myName && <SelectItem value={myId}>كراريسي ({myName})</SelectItem>}
-                {uploaders.filter((p) => p.id !== myId).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
             <Label>الفصل الدراسي</Label>
             <Select value={draft.semester} onValueChange={set("semester")}>
               <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">كل الفصول</SelectItem>
                 {SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>المحور / الوحدة</Label>
+            <Select value={draft.unit} onValueChange={set("unit")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الوحدات</SelectItem>
+                {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
@@ -410,8 +585,10 @@ function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, m
 }
 
 /* ---------- Tier 2: clean lesson row (no thumbnail) ---------- */
-function LessonRow({ lesson: l, parent, onOpen, controls }: {
-  lesson: Lesson; parent?: Lesson | undefined;
+function LessonRow({ lesson: l, parent, author, starred, onStar, onShare, onDelete, onOpen, controls }: {
+  lesson: Lesson; parent?: Lesson | undefined; author?: string | undefined;
+  starred?: boolean | undefined; onStar?: (() => void) | undefined;
+  onShare?: (() => void) | undefined; onDelete?: (() => void) | undefined;
   onOpen: () => void;
   controls?: { up: (() => void) | undefined; down: (() => void) | undefined } | undefined;
 }) {
@@ -424,6 +601,7 @@ function LessonRow({ lesson: l, parent, onOpen, controls }: {
         </span>
         <span className="flex-1 min-w-0 space-y-0.5">
           <span className="block font-bold truncate">{l.title}</span>
+          {author && <span className="block text-[11px] text-primary font-semibold">{author}</span>}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             <Badge className={`text-[10px] px-1.5 py-0 ${l.content_type === "summary" ? "bg-summary text-summary-foreground" : ""}`}>
               {contentTypeLabel(l.content_type)}
@@ -439,6 +617,24 @@ function LessonRow({ lesson: l, parent, onOpen, controls }: {
           <span className="block">{new Date(l.created_at).toLocaleDateString("ar-DZ")}</span>
         </span>
       </button>
+      <span className="flex flex-col gap-1 shrink-0">
+        {onStar && (
+          <Button size="icon" variant="ghost" className="size-7" onClick={onStar}
+            aria-label={starred ? "إزالة من المفضلة" : "إضافة للمفضلة"}>
+            <Star className={`size-4 ${starred ? "fill-accent stroke-accent" : ""}`} />
+          </Button>
+        )}
+        {onShare && (
+          <Button size="icon" variant="ghost" className="size-7" onClick={onShare} aria-label="نسخ الرابط">
+            <Share2 className="size-3.5" />
+          </Button>
+        )}
+        {onDelete && (
+          <Button size="icon" variant="ghost" className="size-7 text-destructive hover:bg-destructive/10" onClick={onDelete} aria-label="حذف">
+            <Trash2 className="size-3.5" />
+          </Button>
+        )}
+      </span>
       {controls && (
         <span className="flex flex-col gap-1 shrink-0">
           <Button size="icon" variant="outline" className="size-7" disabled={!controls.up}
@@ -474,7 +670,7 @@ function NameDialog({ userId, onDone }: { userId: string; onDone: () => void }) 
         onEscapeKeyDown={(e) => e.preventDefault()}
         className="[&>button.absolute]:hidden"
       >
-        <DialogHeader><DialogTitle>مرحباً! ما اسمك؟</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="pe-8">مرحباً! ما اسمك؟</DialogTitle></DialogHeader>
         <form onSubmit={save} className="space-y-3">
           <Label htmlFor="fn">اسم التلميذ الكامل</Label>
           <Input id="fn" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="مثلاً: أيوب بن علي" />
@@ -487,13 +683,13 @@ function NameDialog({ userId, onDone }: { userId: string; onDone: () => void }) 
   );
 }
 
-function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, onDone }: {
-  open: boolean; onOpenChange: (o: boolean) => void; userId: string; defaultSubject: string;
-  myLessons: Lesson[]; onDone: () => void;
+function UploadDialog({ open, onOpenChange, userId, canPublishLessons, defaultSubject, myLessons, onDone }: {
+  open: boolean; onOpenChange: (o: boolean) => void; userId: string; canPublishLessons: boolean;
+  defaultSubject: string; myLessons: Lesson[]; onDone: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
-  const [type, setType] = useState<string>("lesson");
+  const [type, setType] = useState<string>(canPublishLessons ? "lesson" : "summary");
   const [semester, setSemester] = useState<string>("s1");
   const [domain, setDomain] = useState("");
   const [unit, setUnit] = useState("");
@@ -504,13 +700,13 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const generate = useServerFn(generateFormattedPage);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (open) setSubject(defaultSubject); }, [open, defaultSubject]);
+  useEffect(() => { if (open) { setSubject(defaultSubject); if (!canPublishLessons) setType("summary"); } }, [open, defaultSubject, canPublishLessons]);
   const notebook = myLessons.filter((l) => l.subject === subject);
   const roots = notebook.filter((l) => !l.parent_lesson_id);
 
   function resetForm() {
     setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId("");
-    setFiles([]); setType("lesson"); setSemester("s1"); setProgress("");
+    setFiles([]); setType(canPublishLessons ? "lesson" : "summary"); setSemester("s1"); setProgress("");
   }
 
   async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -579,7 +775,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   return (
     <Dialog open={open} onOpenChange={o => {if(!busy)onOpenChange(o);}}>
       <DialogContent className="max-h-[92vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>إضافة درس أو ملخص</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="pe-8">إضافة درس أو ملخص</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5"><Label>عنوان الدرس *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="El pretérito indefinido" /></div>
@@ -590,10 +786,12 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
                 <SelectContent>{SUBJECTS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
               </Select></div>
             <div className="space-y-1.5"><Label>نوع المحتوى</Label>
-              <Select value={type} onValueChange={setType}>
+              <Select value={type} onValueChange={setType} disabled={!canPublishLessons}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
-              </Select></div>
+              </Select>
+              {!canPublishLessons && <p className="text-[11px] text-muted-foreground">الدروس للكتّاب المعتمدين؛ يمكنك نشر الملخصات.</p>}
+            </div>
             <div className="space-y-1.5"><Label>الفصل الدراسي *</Label>
               <Select value={semester} onValueChange={setSemester}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
