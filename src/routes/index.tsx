@@ -670,7 +670,7 @@ function NameDialog({ userId, onDone }: { userId: string; onDone: () => void }) 
         onEscapeKeyDown={(e) => e.preventDefault()}
         className="[&>button.absolute]:hidden"
       >
-        <DialogHeader><DialogTitle>مرحباً! ما اسمك؟</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="pe-8">مرحباً! ما اسمك؟</DialogTitle></DialogHeader>
         <form onSubmit={save} className="space-y-3">
           <Label htmlFor="fn">اسم التلميذ الكامل</Label>
           <Input id="fn" autoFocus value={name} onChange={(e) => setName(e.target.value)} placeholder="مثلاً: أيوب بن علي" />
@@ -775,7 +775,7 @@ function UploadDialog({ open, onOpenChange, userId, canPublishLessons, defaultSu
   return (
     <Dialog open={open} onOpenChange={o => {if(!busy)onOpenChange(o);}}>
       <DialogContent className="max-h-[92vh] overflow-y-auto">
-        <DialogHeader><DialogTitle>إضافة درس أو ملخص</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="pe-8">إضافة درس أو ملخص</DialogTitle></DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1.5"><Label>عنوان الدرس *</Label>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="El pretérito indefinido" /></div>
