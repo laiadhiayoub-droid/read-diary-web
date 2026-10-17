@@ -347,21 +347,83 @@ function Index() {
         ) : (
           /* ============ Tier 1: Book Covers (أغلفة الكراريس) ============ */
           <>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-baseline gap-2">
-                <h2 className="text-xl font-extrabold">كراريس القسم</h2>
-                <span className="text-sm text-muted-foreground">{books.length} كراس</span>
+                <h2 className="text-xl font-extrabold">
+                  {view === "books" ? "كراريس القسم" : view === "summaries" ? "الملخصات" : "مفضلاتي"}
+                </h2>
+                <span className="text-sm text-muted-foreground">
+                  {view === "books" ? `${books.length} كراس` : view === "summaries" ? `${summaries.length} ملخص` : `${favoriteLessons.length} عنصر`}
+                </span>
               </div>
-              <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
-                className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
-                <SlidersHorizontal className="size-4" /> تصفية
-                {Object.values(filters).filter((v) => v !== "all").length > 0 && (
-                  <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
-                )}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant={view === "summaries" ? "default" : "outline"} size="sm" onClick={() => setView(view === "summaries" ? "books" : "summaries")}>
+                  <GraduationCap className="size-4" /> الملخصات
+                </Button>
+                <Button variant={view === "favorites" ? "default" : "outline"} size="sm" onClick={() => setView(view === "favorites" ? "books" : "favorites")}>
+                  <Star className="size-4" /> مفضلاتي
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
+                  className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
+                  <SlidersHorizontal className="size-4" /> تصفية
+                  {Object.values(filters).filter((v) => v !== "all").length > 0 && (
+                    <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
+                  )}
+                </Button>
+              </div>
             </div>
 
-            {lessons.isLoading ? (
+            {view === "summaries" ? (
+              <section className="space-y-4">
+                <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+                  {[{ id: "all", label: "كل المواد" }, ...SUBJECTS].map((s) => (
+                    <button key={s.id} onClick={() => setSummarySubject(s.id)}
+                      className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition ${summarySubject === s.id ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground hover:bg-secondary"}`}>
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+                {summaries.length === 0 ? (
+                  <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
+                    <GraduationCap className="mx-auto mb-3 size-8" />
+                    لا توجد ملخصات هنا بعد.
+                  </div>
+                ) : (
+                  <ol className="space-y-2">
+                    {summaries.map((l) => (
+                      <LessonRow key={l.id} lesson={l} author={nameOf(l.user_id)}
+                        starred={bookmarked.has(l.id)} onStar={() => toggleBookmark(l.id)}
+                        onShare={() => shareLesson(l)}
+                        onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                        onOpen={() => {
+                          setOpenBook({ userId: l.user_id, subject: l.subject, count: 0, hasNew: false });
+                          setZoom(l);
+                        }} />
+                    ))}
+                  </ol>
+                )}
+              </section>
+            ) : view === "favorites" ? (
+              favoriteLessons.length === 0 ? (
+                <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
+                  <Star className="mx-auto mb-3 size-8" />
+                  لم تضف شيئاً إلى المفضلة بعد. اضغط نجمة أي درس أو ملخص لحفظه هنا.
+                </div>
+              ) : (
+                <ol className="space-y-2">
+                  {favoriteLessons.map((l) => (
+                    <LessonRow key={l.id} lesson={l} author={nameOf(l.user_id)}
+                      starred={true} onStar={() => toggleBookmark(l.id)}
+                      onShare={() => shareLesson(l)}
+                      onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                      onOpen={() => {
+                        setOpenBook({ userId: l.user_id, subject: l.subject, count: 0, hasNew: false });
+                        setZoom(l);
+                      }} />
+                  ))}
+                </ol>
+              )
+            ) : lessons.isLoading ? (
               <div className="py-20 grid place-items-center"><Loader2 className="animate-spin text-primary" /></div>
             ) : books.length === 0 ? (
               <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
