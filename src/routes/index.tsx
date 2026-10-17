@@ -163,10 +163,6 @@ function Index() {
   }, [lessons.data, zoom]);
 
   const nameOf = (id: string) => profiles.data?.find((p) => p.id === id)?.full_name || "تلميذ";
-  const uploaders = useMemo(() => {
-    const ids = new Set((lessons.data ?? []).map((l) => l.user_id));
-    return (profiles.data ?? []).filter((p) => ids.has(p.id) && p.full_name);
-  }, [lessons.data, profiles.data]);
 
   // Tier 1: book covers — one card per (student, subject) notebook
   const books = useMemo(() => {
@@ -258,6 +254,7 @@ function Index() {
     setFilters(EMPTY_FILTERS);
     setBookQ("");
     setOpenBook(null);
+    setView("books");
     toast("تم تسجيل الخروج");
   }
 
