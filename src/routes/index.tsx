@@ -318,7 +318,7 @@ function Index() {
                 <p className="text-sm text-muted-foreground">{bookLessons.length} صفحة</p>
               </div>
               {bookLessons[0] && (
-                <Button variant="outline" size="sm" onClick={() => shareLesson(bookLessons[0])}>
+                <Button variant="outline" size="sm" onClick={() => { const first = bookLessons[0]; if (first) shareLesson(first); }}>
                   <Share2 className="size-4" /> نسخ الرابط
                 </Button>
               )}
