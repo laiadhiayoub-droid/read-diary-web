@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   BookOpen, LogOut, Plus, Search, ArrowUp, ArrowDown, Link2, Loader2, ImagePlus, X,
   NotebookPen, ShieldCheck, Lock as LockIcon, BookMarked, FileText, ArrowRight,
-  ZoomIn, ZoomOut, Download,
+  ZoomIn, ZoomOut, Download, SlidersHorizontal,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Timetable } from "@/components/Timetable";
 import { DhikrPill } from "@/components/DhikrPill";
-import { SUBJECTS, CONTENT_TYPES, subjectLabel, contentTypeLabel, compressImage } from "@/lib/library";
+import { SUBJECTS, CONTENT_TYPES, SEMESTERS, subjectLabel, contentTypeLabel, semesterLabel, compressImage } from "@/lib/library";
 import { BoundNotebookReader } from "@/components/BoundNotebookReader";
 import { nextPageNumber, orderedBookPages } from "@/lib/notebook";
 import { generateFormattedPage } from "@/lib/notebook.functions";
@@ -318,23 +318,94 @@ function Index() {
   );
 }
 
-/* ---------- Tier 1: minimal book cover ---------- */
-function BookCover({ book, author, onOpen }: { book: Book; author: string; onOpen: () => void }) {
+/* ---------- Tier 1: 3D book cover (no author name) ---------- */
+function BookCover({ book, onOpen }: { book: Book; onOpen: () => void }) {
   const sub = SUBJECTS.find((s) => s.id === book.subject);
   return (
     <button onClick={onOpen}
-      className="group relative text-start rounded-xl border bg-card overflow-hidden transition hover:shadow-lg hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary">
-      <div className="absolute inset-y-0 start-0 w-2 bg-primary/80" />
-      <div className="p-5 ps-7 space-y-4 min-h-40 flex flex-col">
-        <BookMarked className="size-7 text-primary" />
-        <div className="flex-1 space-y-1">
+      className="group relative text-start rounded-xl border bg-card overflow-hidden shadow-[0_10px_24px_-14px_oklch(0.3_0.05_40/45%),inset_0_1px_0_oklch(1_0_0/60%)] transition duration-300 hover:shadow-[0_18px_36px_-16px_oklch(0.3_0.05_40/50%)] hover:-translate-y-1 hover:rotate-[-0.5deg] focus-visible:ring-2 focus-visible:ring-primary">
+      <div className="absolute inset-y-0 start-0 w-2.5 bg-gradient-to-b from-primary via-primary/90 to-primary/70" />
+      <div className="absolute inset-y-0 start-2.5 w-px bg-foreground/10" />
+      {book.hasNew && (
+        <span className="absolute top-3 end-3 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-accent-foreground shadow-sm animate-pulse">جديد</span>
+      )}
+      <div className="p-5 ps-8 space-y-4 min-h-44 flex flex-col">
+        <BookMarked className="size-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+        <div className="flex-1 space-y-1.5">
+          <Badge variant="secondary" className="text-[10px]">{sub?.sub || "مادة"}</Badge>
           <h3 className="font-extrabold text-base leading-snug">{sub?.label ?? book.subject}</h3>
-          {sub?.sub && <p className="text-xs text-muted-foreground" dir="ltr">{sub.sub}</p>}
-          <p className="text-sm text-muted-foreground pt-1">✍️ {author}</p>
         </div>
-        <Badge variant="secondary" className="self-start">{book.count} {book.count > 2 ? "دروس" : "درس"}</Badge>
+        <span className="self-start inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-bold">
+          <FileText className="size-3.5" /> {book.count} {book.count > 2 ? "دروس" : "درس"}
+        </span>
       </div>
     </button>
+  );
+}
+
+/* ---------- Filter modal ---------- */
+function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, myName }: {
+  open: boolean; onOpenChange: (o: boolean) => void; filters: Filters; onApply: (f: Filters) => void;
+  uploaders: Profile[]; myId: string | undefined; myName: string | null | undefined;
+}) {
+  const [draft, setDraft] = useState<Filters>(filters);
+  useEffect(() => { if (open) setDraft(filters); }, [open, filters]);
+  const set = (k: keyof Filters) => (v: string) => setDraft((d) => ({ ...d, [k]: v }));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> تصفية الكراريس</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>المادة</Label>
+            <Select value={draft.subject} onValueChange={set("subject")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المواد</SelectItem>
+                {SUBJECTS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>نوع المحتوى</Label>
+            <Select value={draft.type} onValueChange={set("type")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">الكل</SelectItem>
+                {CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>التلميذ</Label>
+            <Select value={draft.student} onValueChange={set("student")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">جميع التلاميذ</SelectItem>
+                {myId && myName && <SelectItem value={myId}>كراريسي ({myName})</SelectItem>}
+                {uploaders.filter((p) => p.id !== myId).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>الفصل الدراسي</Label>
+            <Select value={draft.semester} onValueChange={set("semester")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الفصول</SelectItem>
+                {SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button className="flex-1" onClick={() => { onApply(draft); onOpenChange(false); }}>تطبيق التصفية</Button>
+            <Button variant="outline" onClick={() => { setDraft(EMPTY_FILTERS); onApply(EMPTY_FILTERS); onOpenChange(false); }}>إعادة التعيين</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
