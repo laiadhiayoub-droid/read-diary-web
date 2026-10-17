@@ -331,17 +331,41 @@ function Index() {
                 لا توجد دروس في هذا الكراس بعد.
               </div>
             ) : (
-              <ol className="space-y-2">
-                {bookLessons.map((l, i) => (
-                  <LessonRow key={l.id} lesson={l}
-                    parent={lessons.data?.find((p) => p.id === l.parent_lesson_id)}
-                    onOpen={() => setZoom(l)}
-                    controls={isOwnerBook ? {
-                      up: i > 0 ? () => move(i, -1) : undefined,
-                      down: i < bookLessons.length - 1 ? () => move(i, 1) : undefined,
-                    } : undefined} />
+              <div className="space-y-6">
+                {groupedBookLessons.map((sg) => (
+                  <section key={sg.semester} className="space-y-3">
+                    <h3 className="flex items-center gap-2 text-base font-extrabold text-primary">
+                      <span className="h-px flex-1 bg-border" />
+                      {sg.semester === "none" ? "بدون فصل" : semesterLabel(sg.semester)}
+                      <span className="h-px flex-1 bg-border" />
+                    </h3>
+                    {sg.units.map((ug) => (
+                      <div key={ug.unit} className="space-y-2">
+                        {ug.unit !== "none" && (
+                          <p className="text-sm font-bold text-muted-foreground">{ug.unit}</p>
+                        )}
+                        <ol className="space-y-2">
+                          {ug.items.map((l) => {
+                            const i = bookLessons.indexOf(l);
+                            return (
+                              <LessonRow key={l.id} lesson={l}
+                                parent={lessons.data?.find((p) => p.id === l.parent_lesson_id)}
+                                starred={bookmarked.has(l.id)} onStar={() => toggleBookmark(l.id)}
+                                onShare={() => shareLesson(l)}
+                                onDelete={isAdmin ? () => setDeleting(l) : undefined}
+                                onOpen={() => setZoom(l)}
+                                controls={isOwnerBook ? {
+                                  up: i > 0 ? () => move(i, -1) : undefined,
+                                  down: i < bookLessons.length - 1 ? () => move(i, 1) : undefined,
+                                } : undefined} />
+                            );
+                          })}
+                        </ol>
+                      </div>
+                    ))}
+                  </section>
                 ))}
-              </ol>
+              </div>
             )}
           </section>
         ) : (
