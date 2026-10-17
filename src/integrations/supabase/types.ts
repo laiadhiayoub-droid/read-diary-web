@@ -35,6 +35,38 @@ export type Database = {
         }
         Relationships: []
       }
+      formatted_pages: {
+        Row: {
+          document: Json | null
+          error_message: string | null
+          lesson_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          document?: Json | null
+          error_message?: string | null
+          lesson_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          document?: Json | null
+          error_message?: string | null
+          lesson_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "formatted_pages_lesson_id_fkey"
+            columns: ["lesson_id"]
+            isOneToOne: true
+            referencedRelation: "lessons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_views: {
         Row: {
           id: string
@@ -127,6 +159,24 @@ export type Database = {
           },
         ]
       }
+      notebook_generation_state: {
+        Row: {
+          id: number
+          paused: boolean
+          reason: string | null
+        }
+        Insert: {
+          id?: number
+          paused?: boolean
+          reason?: string | null
+        }
+        Update: {
+          id?: number
+          paused?: boolean
+          reason?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
@@ -213,6 +263,10 @@ export type Database = {
       }
       admin_set_name: {
         Args: { _name: string; _user_id: string }
+        Returns: undefined
+      }
+      admin_set_subscriber: {
+        Args: { _is_subscriber: boolean; _user_id: string }
         Returns: undefined
       }
       admin_set_writer: {

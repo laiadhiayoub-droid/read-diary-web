@@ -1,0 +1,13 @@
+CREATE OR REPLACE FUNCTION public.admin_set_subscriber(_user_id uuid, _is_subscriber boolean) RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$ BEGIN IF auth.uid() IS NULL OR NOT public.has_role(auth.uid(), 'admin') OR public.current_user_banned() THEN RAISE EXCEPTION 'forbidden'; END IF; IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = _user_id) THEN RAISE EXCEPTION 'unknown user'; END IF; IF _is_subscriber THEN INSERT INTO public.user_roles(user_id, role) VALUES (_user_id, 'subscriber') ON CONFLICT DO NOTHING; ELSE DELETE FROM public.user_roles WHERE user_id = _user_id AND role = 'subscriber'; END IF; END $$;
+REVOKE ALL ON FUNCTION public.admin_set_subscriber(uuid, boolean) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.admin_set_subscriber(uuid, boolean) TO authenticated;
+CREATE TABLE public.formatted_pages (lesson_id uuid PRIMARY KEY REFERENCES public.lessons(id) ON DELETE CASCADE, document jsonb, status text NOT NULL DEFAULT 'pending', error_message text, updated_at timestamptz NOT NULL DEFAULT now());
+GRANT SELECT ON public.formatted_pages TO authenticated;
+GRANT ALL ON public.formatted_pages TO service_role;
+ALTER TABLE public.formatted_pages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Subscribers and admins read formatted pages" ON public.formatted_pages FOR SELECT TO authenticated USING (NOT public.current_user_banned() AND (public.has_role(auth.uid(), 'subscriber') OR public.has_role(auth.uid(), 'admin')));
+CREATE TABLE public.notebook_generation_state (id integer PRIMARY KEY DEFAULT 1, paused boolean NOT NULL DEFAULT false, reason text);
+GRANT ALL ON public.notebook_generation_state TO service_role;
+ALTER TABLE public.notebook_generation_state ENABLE ROW LEVEL SECURITY;
+CREATE OR REPLACE FUNCTION public.invalidate_formatted_page() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public AS $$ BEGIN IF NEW.image_path IS DISTINCT FROM OLD.image_path THEN DELETE FROM public.formatted_pages WHERE lesson_id=NEW.id; END IF; RETURN NEW; END $$;
+CREATE TRIGGER invalidate_formatted_page AFTER UPDATE ON public.lessons FOR EACH ROW EXECUTE FUNCTION public.invalidate_formatted_page();
