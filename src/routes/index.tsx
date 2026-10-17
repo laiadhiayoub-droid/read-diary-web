@@ -700,13 +700,13 @@ function UploadDialog({ open, onOpenChange, userId, canPublishLessons, defaultSu
   const generate = useServerFn(generateFormattedPage);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { if (open) setSubject(defaultSubject); }, [open, defaultSubject]);
+  useEffect(() => { if (open) { setSubject(defaultSubject); if (!canPublishLessons) setType("summary"); } }, [open, defaultSubject, canPublishLessons]);
   const notebook = myLessons.filter((l) => l.subject === subject);
   const roots = notebook.filter((l) => !l.parent_lesson_id);
 
   function resetForm() {
     setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId("");
-    setFiles([]); setType("lesson"); setSemester("s1"); setProgress("");
+    setFiles([]); setType(canPublishLessons ? "lesson" : "summary"); setSemester("s1"); setProgress("");
   }
 
   async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -786,10 +786,12 @@ function UploadDialog({ open, onOpenChange, userId, canPublishLessons, defaultSu
                 <SelectContent>{SUBJECTS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
               </Select></div>
             <div className="space-y-1.5"><Label>نوع المحتوى</Label>
-              <Select value={type} onValueChange={setType}>
+              <Select value={type} onValueChange={setType} disabled={!canPublishLessons}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
-              </Select></div>
+              </Select>
+              {!canPublishLessons && <p className="text-[11px] text-muted-foreground">الدروس للكتّاب المعتمدين؛ يمكنك نشر الملخصات.</p>}
+            </div>
             <div className="space-y-1.5"><Label>الفصل الدراسي *</Label>
               <Select value={semester} onValueChange={setSemester}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
