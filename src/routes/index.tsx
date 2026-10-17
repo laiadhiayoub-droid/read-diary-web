@@ -683,13 +683,13 @@ function NameDialog({ userId, onDone }: { userId: string; onDone: () => void }) 
   );
 }
 
-function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, onDone }: {
-  open: boolean; onOpenChange: (o: boolean) => void; userId: string; defaultSubject: string;
-  myLessons: Lesson[]; onDone: () => void;
+function UploadDialog({ open, onOpenChange, userId, canPublishLessons, defaultSubject, myLessons, onDone }: {
+  open: boolean; onOpenChange: (o: boolean) => void; userId: string; canPublishLessons: boolean;
+  defaultSubject: string; myLessons: Lesson[]; onDone: () => void;
 }) {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
-  const [type, setType] = useState<string>("lesson");
+  const [type, setType] = useState<string>(canPublishLessons ? "lesson" : "summary");
   const [semester, setSemester] = useState<string>("s1");
   const [domain, setDomain] = useState("");
   const [unit, setUnit] = useState("");
