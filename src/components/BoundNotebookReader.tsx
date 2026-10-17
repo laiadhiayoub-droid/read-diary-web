@@ -25,6 +25,22 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
   const allowed = canReadFormatted(roles);
   const canEdit = roles.includes("admin") || roles.includes("writer");
   const pinch = useRef<{d:number;scale:number}|null>(null);
+  const [downloading,setDownloading] = useState(false);
+  const [lightbox,setLightbox] = useState(false);
+  async function downloadImage() {
+    if(!image.data || !page || downloading) return;
+    setDownloading(true);
+    try {
+      const res = await fetch(image.data);
+      if(!res.ok) throw new Error("fetch failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${page.title}.jpg`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(()=>URL.revokeObjectURL(url), 30000);
+    } catch { toast.error("تعذّر تحميل الصورة"); } finally { setDownloading(false); }
+  }
   useEffect(()=>{setIndex(Math.max(0,pages.findIndex(p=>p.id===initialId)));setMode("original");setFailure(null);setEditing(false);setDraft(null);},[initialId]);
   const page=initialId ? pages[index] : undefined;
   useEffect(()=>{setScale(1);setEditing(false);setDraft(null);},[page?.id]);
