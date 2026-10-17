@@ -169,7 +169,8 @@ function Index() {
     await qc.cancelQueries();
     qc.clear();
     await supabase.auth.signOut();
-    setStudentId("all");
+    setFilters(EMPTY_FILTERS);
+    setBookQ("");
     setOpenBook(null);
     toast("تم تسجيل الخروج");
   }
@@ -212,7 +213,7 @@ function Index() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 pt-6"><Timetable /></div>
+      {!openBook && <div className="mx-auto max-w-5xl px-4 pt-6"><Timetable /></div>}
 
       {ready && !user ? (
         <main className="mx-auto max-w-xl px-4 py-16">
@@ -241,6 +242,12 @@ function Index() {
               </div>
             </div>
 
+            <div className="relative max-w-md">
+              <Search className="size-4 absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground" />
+              <Input className="ps-9 bg-card" value={bookQ} onChange={(e) => setBookQ(e.target.value)}
+                placeholder="ابحث داخل هذا الكراس (عنوان، ميدان، وحدة...)" />
+            </div>
+
             {bookLessons.length === 0 ? (
               <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
                 <NotebookPen className="mx-auto mb-3 size-8" />
@@ -263,48 +270,18 @@ function Index() {
         ) : (
           /* ============ Tier 1: Book Covers (أغلفة الكراريس) ============ */
           <>
-            <section className="grid gap-3 sm:grid-cols-[1fr_1fr] lg:grid-cols-[220px_1fr_1.4fr]">
-              <div className="space-y-1.5">
-                <Label>اختر التلميذ</Label>
-                <Select value={studentId} onValueChange={setStudentId}>
-                  <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">جميع التلاميذ</SelectItem>
-                    {user && myProfile?.full_name && <SelectItem value={user.id}>كراريسي ({myProfile.full_name})</SelectItem>}
-                    {uploaders.filter((p) => p.id !== user?.id).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-xl font-extrabold">كراريس القسم</h2>
+                <span className="text-sm text-muted-foreground">{books.length} كراس</span>
               </div>
-              <div className="space-y-1.5">
-                <Label>ابحث</Label>
-                <div className="relative">
-                  <Search className="size-4 absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground" />
-                  <Input className="ps-9 bg-card" value={q} onChange={(e) => setQ(e.target.value)}
-                    placeholder="ابحث عن درس محدد (مثلاً: درس غبت فيه...)" />
-                </div>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1 lg:row-start-1 lg:col-start-3">
-                <Label>اختر الكراس</Label>
-                <div className="flex gap-1.5 overflow-x-auto pb-1">
-                  <button onClick={() => setSubject("all")}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${subject === "all" ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-secondary"}`}>
-                    كل المواد
-                  </button>
-                  {SUBJECTS.map((s) => (
-                    <button key={s.id} onClick={() => setSubject(s.id)}
-                      className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${subject === s.id ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-secondary"}`}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xl font-extrabold">كراريس القسم</h2>
-              <span className="text-sm text-muted-foreground">{books.length} كراس</span>
+              <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
+                className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
+                <SlidersHorizontal className="size-4" /> تصفية
+                {Object.values(filters).filter((v) => v !== "all").length > 0 && (
+                  <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
+                )}
+              </Button>
             </div>
 
             {lessons.isLoading ? (
@@ -317,8 +294,7 @@ function Index() {
             ) : (
               <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {books.map((b) => (
-                  <BookCover key={`${b.userId}:${b.subject}`} book={b} author={nameOf(b.userId)}
-                    onOpen={() => setOpenBook(b)} />
+                  <BookCover key={`${b.userId}:${b.subject}`} book={b} onOpen={() => setOpenBook(b)} />
                 ))}
               </div>
             )}
@@ -329,9 +305,11 @@ function Index() {
       <DhikrPill />
 
       {needsName && user && <NameDialog userId={user.id} onDone={() => qc.invalidateQueries({ queryKey: ["profiles"] })} />}
+      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters}
+        uploaders={uploaders} myId={user?.id} myName={myProfile?.full_name} />
       {user && (
         <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} userId={user.id}
-          defaultSubject={subject === "all" ? "spanish" : subject}
+          defaultSubject={filters.subject === "all" ? "spanish" : filters.subject}
           myLessons={(lessons.data ?? []).filter((l) => l.user_id === user.id)}
           onDone={() => qc.invalidateQueries({ queryKey: ["lessons"] })} />
       )}
