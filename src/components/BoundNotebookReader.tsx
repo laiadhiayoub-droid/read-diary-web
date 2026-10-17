@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { generateFormattedPage, updateFormattedPage } from "@/lib/notebook.functions";
 import { canReadFormatted, LOCKED_NOTEBOOK_MESSAGE, notebookDocumentSchema, type NotebookDocument } from "@/lib/notebook";
+import { NotebookDiagram } from "@/components/NotebookDiagram";
 
 type Page = {id:string;title:string;image_path:string;subject:string};
 export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:Page[];initialId:string|null;roles:string[];onClose:()=>void}) {
@@ -38,10 +39,10 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
     if(error) throw error;return data;
   }});
   const parsed=notebookDocumentSchema.safeParse(formatted.data?.document);
-  async function prepare(resume = false) {
+  async function prepare(resume = false, rebuild = false) {
     if(!page || busy) return;
     setBusy(true);setFailure(null);
-    try { const result=await generate({data:{lessonId:page.id,resume}}); if(result.status==="error")setFailure(result.message); await formatted.refetch(); }
+    try { const result=await generate({data:{lessonId:page.id,resume,rebuild}}); if(result.status==="error")setFailure(result.message); await formatted.refetch(); }
     catch {setFailure("تعذّر تنسيق الصفحة.");} finally {setBusy(false);}
   }
   function startEdit() {
@@ -64,7 +65,8 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
   }
   function onTouchMove(e:React.TouchEvent) {
     if(e.touches.length!==2) return;
-    const [a,b]=[e.touches[0]!,e.touches[1]!];
+    const a=e.touches[0], b=e.touches[1];
+    if(!a || !b) return;
     const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
     if(!pinch.current){pinch.current={d,scale};return;}
     setScale(Math.min(3,Math.max(0.5,pinch.current.scale*(d/pinch.current.d))));
@@ -73,8 +75,8 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
   return <Dialog open={!!initialId} onOpenChange={open=>{if(!open)onClose();}}>
     <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[94vh] overflow-hidden p-0 gap-0">
       <DialogTitle className="sr-only">{page?.title || "الكراس"}</DialogTitle>
-      <div className="flex flex-wrap gap-2 items-center border-b p-4 pe-12">
-        <div className="min-w-0 flex-1"><h2 className="font-bold break-words">{page?.title}</h2><p className="text-xs text-muted-foreground">صفحة {index+1} من {pages.length}</p></div>
+      <div className="flex flex-wrap gap-2 items-center border-b p-4 px-12">
+        <div className="min-w-0 w-full sm:w-auto sm:flex-1"><h2 className="font-bold break-words">{page?.title}</h2><p className="text-xs text-muted-foreground">صفحة {index+1} من {pages.length}</p></div>
         <Button size="sm" variant={mode==="original"?"default":"outline"} onClick={()=>setMode("original")}><BookOpen className="size-4"/>الأصل</Button>
         <Button size="sm" variant={mode==="formatted"?"default":"outline"} onClick={()=>setMode("formatted")}>{allowed?<FileText className="size-4"/>:<Lock className="size-4"/>}الكراس المنسّق</Button>
       </div>
@@ -96,6 +98,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
         : editing && draft ? <article className="digital-sheet mx-auto" dir={draft.direction}>
             <p className="text-xs text-muted-foreground mb-4">عدّل النص مباشرة ثم احفظ. تُحفظ الألوان والتنسيق كما هي.</p>
             {draft.blocks.map((block,i)=><div key={i} className={`document-block document-${block.kind}`}>
+              {block.kind === "diagram" && <NotebookDiagram diagram={block.diagram}/>}
               {block.runs.map((run,j)=><span key={j} contentEditable suppressContentEditableWarning
                 onBlur={e=>setRunText(i,j,e.currentTarget.textContent ?? "")}
                 className="outline-none focus:bg-secondary/60 rounded-sm px-0.5"
@@ -104,14 +107,19 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
           </article>
         : parsed.success && formatted.data?.status==="ready" ? <>
           {parsed.data.uncertain && <p className="text-sm text-destructive mb-3">توجد أجزاء غير واضحة؛ راجع الصورة الأصلية.</p>}
-          {canEdit && <div className="flex justify-end mb-3"><Button size="sm" variant="outline" onClick={startEdit}><Pencil className="size-4"/>تعديل النص</Button></div>}
+          {failure && <p role="alert" className="text-sm text-destructive mb-3">{failure}</p>}
+          {canEdit && <div className="flex flex-wrap justify-end gap-2 mb-3">
+            {roles.includes("admin") && <Button size="sm" variant="outline" disabled={busy} onClick={()=>prepare(false,true)}>{busy?<Loader2 className="size-4 animate-spin"/>:<RefreshCw className="size-4"/>}إعادة تنسيق الرسومات</Button>}
+            <Button size="sm" variant="outline" disabled={busy} onClick={startEdit}><Pencil className="size-4"/>تعديل النص</Button>
+          </div>}
           <div className={showSideBySide ? "grid gap-4 lg:grid-cols-2 items-start" : ""}>
             {showSideBySide && <figure className="hidden lg:block sticky top-0">
-              <img className="w-full h-auto rounded-md border" src={image.data!} alt="الصفحة الأصلية"/>
+              <img className="w-full h-auto rounded-md border" src={image.data ?? undefined} alt="الصفحة الأصلية"/>
               <figcaption className="text-xs text-muted-foreground text-center mt-1">الصورة الأصلية</figcaption>
             </figure>}
             <article className="digital-sheet mx-auto" dir={parsed.data.direction}>
               {parsed.data.blocks.map((block,i)=><div key={i} className={`document-block document-${block.kind}`}>
+                {block.kind === "diagram" && <NotebookDiagram diagram={block.diagram}/>}
                 {block.runs.map((run,j)=><span key={j} style={{color:run.color,backgroundColor:run.highlight ?? "transparent",fontWeight:run.bold?700:400,textDecoration:run.underline?"underline":"none"}}>{run.text}</span>)}
               </div>)}
               <footer className="document-footer">{index+1}</footer>
