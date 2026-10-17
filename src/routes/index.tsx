@@ -522,9 +522,9 @@ function BookCover({ book, onOpen }: { book: Book; onOpen: () => void }) {
 }
 
 /* ---------- Filter modal ---------- */
-function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, myName }: {
+function FilterDialog({ open, onOpenChange, filters, onApply, units }: {
   open: boolean; onOpenChange: (o: boolean) => void; filters: Filters; onApply: (f: Filters) => void;
-  uploaders: Profile[]; myId: string | undefined; myName: string | null | undefined;
+  units: string[];
 }) {
   const [draft, setDraft] = useState<Filters>(filters);
   useEffect(() => { if (open) setDraft(filters); }, [open, filters]);
@@ -532,7 +532,7 @@ function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, m
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
-        <DialogHeader><DialogTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> تصفية الكراريس</DialogTitle></DialogHeader>
+        <DialogHeader><DialogTitle className="flex items-center gap-2 pe-8"><SlidersHorizontal className="size-5 shrink-0" /> تصفية الكراريس</DialogTitle></DialogHeader>
         <div className="space-y-4">
           <div className="space-y-1.5">
             <Label>المادة</Label>
