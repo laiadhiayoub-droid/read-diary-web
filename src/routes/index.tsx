@@ -107,6 +107,60 @@ function Index() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [zoom, setZoom] = useState<Lesson | null>(null);
   const [openBook, setOpenBook] = useState<Book | null>(null);
+  const [view, setView] = useState<View>("books");
+  const [summarySubject, setSummarySubject] = useState("all");
+  const [deleting, setDeleting] = useState<Lesson | null>(null);
+
+  const bookmarks = useQuery({
+    queryKey: ["bookmarks", user?.id],
+    enabled: !!user,
+    queryFn: async () => {
+      if (!user) return [] as string[];
+      const { data, error } = await supabase.from("bookmarks").select("lesson_id").eq("user_id", user.id);
+      if (error) throw error;
+      return data.map((b) => b.lesson_id);
+    },
+  });
+  const bookmarked = useMemo(() => new Set(bookmarks.data ?? []), [bookmarks.data]);
+  async function toggleBookmark(lessonId: string) {
+    if (!user) return;
+    if (bookmarked.has(lessonId)) {
+      const { error } = await supabase.from("bookmarks").delete().eq("user_id", user.id).eq("lesson_id", lessonId);
+      if (error) { toast.error("تعذّر تحديث المفضلة"); return; }
+    } else {
+      const { error } = await supabase.from("bookmarks").insert({ user_id: user.id, lesson_id: lessonId });
+      if (error) { toast.error("تعذّر تحديث المفضلة"); return; }
+    }
+    qc.invalidateQueries({ queryKey: ["bookmarks", user.id] });
+  }
+
+  async function deleteLesson() {
+    const l = deleting;
+    if (!l) return;
+    const ids = [l.id, ...(lessons.data ?? []).filter((x) => x.parent_lesson_id === l.id).map((x) => x.id)];
+    const paths = (lessons.data ?? []).filter((x) => ids.includes(x.id)).map((x) => x.image_path);
+    const { error } = await supabase.from("lessons").delete().in("id", ids);
+    if (error) { toast.error("تعذّر الحذف"); return; }
+    if (paths.length) await supabase.storage.from("lessons-images").remove(paths);
+    toast.success("تم الحذف");
+    setDeleting(null);
+    qc.invalidateQueries({ queryKey: ["lessons"] });
+  }
+
+  function shareLesson(l: Lesson) {
+    const url = `${window.location.origin}/?lesson=${l.id}`;
+    void navigator.clipboard.writeText(url).then(() => toast.success("تم نسخ الرابط"), () => toast.error("تعذّر نسخ الرابط"));
+  }
+
+  // Open a shared lesson link (?lesson=<id>)
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("lesson");
+    if (!id || !lessons.data || zoom) return;
+    const target = lessons.data.find((l) => l.id === id);
+    if (!target) return;
+    setOpenBook({ userId: target.user_id, subject: target.subject, count: 0, hasNew: false });
+    setZoom(target);
+  }, [lessons.data, zoom]);
 
   const nameOf = (id: string) => profiles.data?.find((p) => p.id === id)?.full_name || "تلميذ";
   const uploaders = useMemo(() => {
