@@ -43,6 +43,13 @@
       "when": 1792239397975,
       "tag": "0005_create_bookmarks",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792239577891,
+      "tag": "0006_students_insert_summaries",
+      "breakpoints": true
     }
   ]
 }
