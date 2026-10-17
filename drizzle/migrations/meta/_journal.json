@@ -8,6 +8,13 @@
       "when": 1792225596453,
       "tag": "0000_notebook_reads_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792226793365,
+      "tag": "0001_add_subscriber_role",
+      "breakpoints": true
     }
   ]
 }
