@@ -109,6 +109,7 @@ export type Database = {
           order_index: number
           page_number: number
           parent_lesson_id: string | null
+          semester: string | null
           subject: string
           title: string
           unit: string | null
@@ -123,6 +124,7 @@ export type Database = {
           order_index?: number
           page_number?: number
           parent_lesson_id?: string | null
+          semester?: string | null
           subject: string
           title: string
           unit?: string | null
@@ -137,6 +139,7 @@ export type Database = {
           order_index?: number
           page_number?: number
           parent_lesson_id?: string | null
+          semester?: string | null
           subject?: string
           title?: string
           unit?: string | null

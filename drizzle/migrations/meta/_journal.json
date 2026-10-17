@@ -29,6 +29,13 @@
       "when": 1792227014084,
       "tag": "0003_restrict_formatted_page_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792237496910,
+      "tag": "0004_add_lesson_semester",
+      "breakpoints": true
     }
   ]
 }
