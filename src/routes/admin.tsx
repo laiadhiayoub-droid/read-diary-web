@@ -225,20 +225,18 @@ function UsersPanel() {
                 <Button size="icon" variant="ghost" aria-label="تعديل الاسم" onClick={() => setEdit(u)}><Pencil className="size-4" /></Button>
                 {admin ? <Badge>مشرف</Badge> : (
                   <>
-                    <div className="flex rounded-full border p-0.5 text-sm">
-                      {[{ v: false, l: "تلميذ" }, { v: true, l: "كاتب" }].map((o) => (
-                        <button key={o.l} disabled={busy === u.id || writer === o.v}
-                          onClick={() => setWriter(u.id, o.v)}
-                          className={`rounded-full px-3 py-1 transition ${writer === o.v ? "bg-school text-school-foreground" : "text-muted-foreground hover:bg-muted"}`}>
-                          {o.l}
-                        </button>
-                      ))}
+                    <div className="flex flex-wrap items-center gap-4">
+                      <label className="flex items-center gap-2 text-sm">
+                        <Switch aria-label={`صلاحية الكتابة لـ ${u.full_name || u.email}`} checked={writer} disabled={busy === u.id}
+                          onCheckedChange={v => setWriter(u.id, v)} />
+                        كاتب معتمد
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Switch aria-label={`اشتراك ${u.full_name || u.email}`} checked={u.roles.includes("subscriber")} disabled={busy === u.id}
+                          onCheckedChange={v => setSubscriber(u.id, v)} />
+                        مشترك
+                      </label>
                     </div>
-                    <label className="flex items-center gap-2 text-sm">
-                      <Switch aria-label={`اشتراك ${u.full_name || u.email}`} checked={u.roles.includes("subscriber")} disabled={busy === u.id}
-                        onCheckedChange={v => setSubscriber(u.id, v)} />
-                      {u.roles.includes("subscriber") ? "مشترك" : "غير مشترك"}
-                    </label>
                     {u.banned
                       ? <Button size="sm" variant="outline" onClick={() => unban(u.email)}><Undo2 className="size-4" /> رفع الحظر</Button>
                       : <Button size="sm" variant="outline" className="text-destructive" onClick={() => ban(u.email)}><Ban className="size-4" /> حظر</Button>}

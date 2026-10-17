@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   BookOpen, LogOut, Plus, Search, ArrowUp, ArrowDown, Link2, Loader2, ImagePlus, X,
   NotebookPen, ShieldCheck, Lock as LockIcon, BookMarked, FileText, ArrowRight,
-  ZoomIn, ZoomOut, Download,
+  ZoomIn, ZoomOut, Download, SlidersHorizontal,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/select";
 import { Timetable } from "@/components/Timetable";
 import { DhikrPill } from "@/components/DhikrPill";
-import { SUBJECTS, CONTENT_TYPES, subjectLabel, contentTypeLabel, compressImage } from "@/lib/library";
+import { SUBJECTS, CONTENT_TYPES, SEMESTERS, subjectLabel, contentTypeLabel, semesterLabel, compressImage } from "@/lib/library";
 import { BoundNotebookReader } from "@/components/BoundNotebookReader";
 import { nextPageNumber, orderedBookPages } from "@/lib/notebook";
 import { generateFormattedPage } from "@/lib/notebook.functions";
@@ -43,11 +43,14 @@ export const Route = createFileRoute("/")({
 
 type Lesson = {
   id: string; user_id: string; title: string; subject: string; content_type: string;
-  domain: string | null; unit: string | null; page_number: number;
+  domain: string | null; unit: string | null; page_number: number; semester: string | null;
   parent_lesson_id: string | null; image_path: string; order_index: number; created_at: string;
 };
 type Profile = { id: string; full_name: string | null };
-type Book = { userId: string; subject: string; count: number };
+type Book = { userId: string; subject: string; count: number; hasNew: boolean };
+type Filters = { student: string; subject: string; type: string; semester: string };
+const EMPTY_FILTERS: Filters = { student: "all", subject: "all", type: "all", semester: "all" };
+const NEW_DAYS = 7;
 
 function useUser() {
   const [user, setUser] = useState<User | null>(null);
@@ -97,9 +100,9 @@ function Index() {
   const canPublish = isAdmin || !!roles.data?.includes("writer");
   const needsName = !!user && profiles.isSuccess && !myProfile?.full_name;
 
-  const [studentId, setStudentId] = useState<string>("all");
-  const [subject, setSubject] = useState<string>("spanish");
-  const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [bookQ, setBookQ] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [zoom, setZoom] = useState<Lesson | null>(null);
   const [openBook, setOpenBook] = useState<Book | null>(null);
@@ -112,26 +115,33 @@ function Index() {
 
   // Tier 1: book covers — one card per (student, subject) notebook
   const books = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const cutoff = Date.now() - NEW_DAYS * 24 * 60 * 60 * 1000;
     const map = new Map<string, Book>();
     for (const l of lessons.data ?? []) {
-      if (studentId !== "all" && l.user_id !== studentId) continue;
-      if (subject !== "all" && l.subject !== subject) continue;
-      if (term && ![l.title, l.domain, l.unit, nameOf(l.user_id)].some((v) => v?.toLowerCase().includes(term))) continue;
+      if (filters.student !== "all" && l.user_id !== filters.student) continue;
+      if (filters.subject !== "all" && l.subject !== filters.subject) continue;
+      if (filters.type !== "all" && l.content_type !== filters.type) continue;
+      if (filters.semester !== "all" && l.semester !== filters.semester) continue;
       const key = `${l.user_id}:${l.subject}`;
-      const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0 };
+      const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0, hasNew: false };
       b.count++;
+      if (new Date(l.created_at).getTime() >= cutoff) b.hasNew = true;
       map.set(key, b);
     }
     return [...map.values()].sort((a, b) => nameOf(a.userId).localeCompare(nameOf(b.userId), "ar"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessons.data, studentId, subject, q, profiles.data]);
+  }, [lessons.data, filters, profiles.data]);
 
-  // Tier 2: lessons inside the open book
+  // Tier 2: lessons inside the open book (searchable within the notebook)
   const bookLessons = useMemo(() => {
     if (!openBook) return [];
-    return orderedBookPages((lessons.data ?? []).filter((l) => l.user_id === openBook.userId && l.subject === openBook.subject));
-  }, [lessons.data, openBook]);
+    const term = bookQ.trim().toLowerCase();
+    return orderedBookPages(
+      (lessons.data ?? []).filter((l) =>
+        l.user_id === openBook.userId && l.subject === openBook.subject &&
+        (!term || [l.title, l.domain, l.unit].some((v) => v?.toLowerCase().includes(term)))),
+    );
+  }, [lessons.data, openBook, bookQ]);
 
   const isOwnerBook = !!user && openBook?.userId === user.id;
 
@@ -159,7 +169,8 @@ function Index() {
     await qc.cancelQueries();
     qc.clear();
     await supabase.auth.signOut();
-    setStudentId("all");
+    setFilters(EMPTY_FILTERS);
+    setBookQ("");
     setOpenBook(null);
     toast("تم تسجيل الخروج");
   }
@@ -202,7 +213,7 @@ function Index() {
         </div>
       </header>
 
-      <div className="mx-auto max-w-5xl px-4 pt-6"><Timetable /></div>
+      {!openBook && <div className="mx-auto max-w-5xl px-4 pt-6"><Timetable /></div>}
 
       {ready && !user ? (
         <main className="mx-auto max-w-xl px-4 py-16">
@@ -231,6 +242,12 @@ function Index() {
               </div>
             </div>
 
+            <div className="relative max-w-md">
+              <Search className="size-4 absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground" />
+              <Input className="ps-9 bg-card" value={bookQ} onChange={(e) => setBookQ(e.target.value)}
+                placeholder="ابحث داخل هذا الكراس (عنوان، ميدان، وحدة...)" />
+            </div>
+
             {bookLessons.length === 0 ? (
               <div className="notebook-paper margin-line rounded-xl p-12 text-center text-muted-foreground">
                 <NotebookPen className="mx-auto mb-3 size-8" />
@@ -253,48 +270,18 @@ function Index() {
         ) : (
           /* ============ Tier 1: Book Covers (أغلفة الكراريس) ============ */
           <>
-            <section className="grid gap-3 sm:grid-cols-[1fr_1fr] lg:grid-cols-[220px_1fr_1.4fr]">
-              <div className="space-y-1.5">
-                <Label>اختر التلميذ</Label>
-                <Select value={studentId} onValueChange={setStudentId}>
-                  <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">جميع التلاميذ</SelectItem>
-                    {user && myProfile?.full_name && <SelectItem value={user.id}>كراريسي ({myProfile.full_name})</SelectItem>}
-                    {uploaders.filter((p) => p.id !== user?.id).map((p) => (
-                      <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-baseline gap-2">
+                <h2 className="text-xl font-extrabold">كراريس القسم</h2>
+                <span className="text-sm text-muted-foreground">{books.length} كراس</span>
               </div>
-              <div className="space-y-1.5">
-                <Label>ابحث</Label>
-                <div className="relative">
-                  <Search className="size-4 absolute top-1/2 -translate-y-1/2 start-3 text-muted-foreground" />
-                  <Input className="ps-9 bg-card" value={q} onChange={(e) => setQ(e.target.value)}
-                    placeholder="ابحث عن درس محدد (مثلاً: درس غبت فيه...)" />
-                </div>
-              </div>
-              <div className="space-y-1.5 sm:col-span-2 lg:col-span-1 lg:row-start-1 lg:col-start-3">
-                <Label>اختر الكراس</Label>
-                <div className="flex gap-1.5 overflow-x-auto pb-1">
-                  <button onClick={() => setSubject("all")}
-                    className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${subject === "all" ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-secondary"}`}>
-                    كل المواد
-                  </button>
-                  {SUBJECTS.map((s) => (
-                    <button key={s.id} onClick={() => setSubject(s.id)}
-                      className={`shrink-0 rounded-full border px-3 py-1.5 text-sm transition ${subject === s.id ? "bg-primary text-primary-foreground border-primary" : "bg-card hover:bg-secondary"}`}>
-                      {s.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </section>
-
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-xl font-extrabold">كراريس القسم</h2>
-              <span className="text-sm text-muted-foreground">{books.length} كراس</span>
+              <Button variant="outline" size="sm" onClick={() => setFilterOpen(true)}
+                className={Object.values(filters).some((v) => v !== "all") ? "border-primary text-primary" : ""}>
+                <SlidersHorizontal className="size-4" /> تصفية
+                {Object.values(filters).filter((v) => v !== "all").length > 0 && (
+                  <Badge className="ms-1 px-1.5 py-0 text-[10px]">{Object.values(filters).filter((v) => v !== "all").length}</Badge>
+                )}
+              </Button>
             </div>
 
             {lessons.isLoading ? (
@@ -307,8 +294,7 @@ function Index() {
             ) : (
               <div className="grid gap-4 grid-cols-2 sm:grid-cols-3 lg:grid-cols-4">
                 {books.map((b) => (
-                  <BookCover key={`${b.userId}:${b.subject}`} book={b} author={nameOf(b.userId)}
-                    onOpen={() => setOpenBook(b)} />
+                  <BookCover key={`${b.userId}:${b.subject}`} book={b} onOpen={() => setOpenBook(b)} />
                 ))}
               </div>
             )}
@@ -319,9 +305,11 @@ function Index() {
       <DhikrPill />
 
       {needsName && user && <NameDialog userId={user.id} onDone={() => qc.invalidateQueries({ queryKey: ["profiles"] })} />}
+      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters}
+        uploaders={uploaders} myId={user?.id} myName={myProfile?.full_name} />
       {user && (
         <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} userId={user.id}
-          defaultSubject={subject === "all" ? "spanish" : subject}
+          defaultSubject={filters.subject === "all" ? "spanish" : filters.subject}
           myLessons={(lessons.data ?? []).filter((l) => l.user_id === user.id)}
           onDone={() => qc.invalidateQueries({ queryKey: ["lessons"] })} />
       )}
@@ -330,23 +318,94 @@ function Index() {
   );
 }
 
-/* ---------- Tier 1: minimal book cover ---------- */
-function BookCover({ book, author, onOpen }: { book: Book; author: string; onOpen: () => void }) {
+/* ---------- Tier 1: 3D book cover (no author name) ---------- */
+function BookCover({ book, onOpen }: { book: Book; onOpen: () => void }) {
   const sub = SUBJECTS.find((s) => s.id === book.subject);
   return (
     <button onClick={onOpen}
-      className="group relative text-start rounded-xl border bg-card overflow-hidden transition hover:shadow-lg hover:-translate-y-0.5 focus-visible:ring-2 focus-visible:ring-primary">
-      <div className="absolute inset-y-0 start-0 w-2 bg-primary/80" />
-      <div className="p-5 ps-7 space-y-4 min-h-40 flex flex-col">
-        <BookMarked className="size-7 text-primary" />
-        <div className="flex-1 space-y-1">
+      className="group relative text-start rounded-xl border bg-card overflow-hidden shadow-[0_10px_24px_-14px_oklch(0.3_0.05_40/45%),inset_0_1px_0_oklch(1_0_0/60%)] transition duration-300 hover:shadow-[0_18px_36px_-16px_oklch(0.3_0.05_40/50%)] hover:-translate-y-1 hover:rotate-[-0.5deg] focus-visible:ring-2 focus-visible:ring-primary">
+      <div className="absolute inset-y-0 start-0 w-2.5 bg-gradient-to-b from-primary via-primary/90 to-primary/70" />
+      <div className="absolute inset-y-0 start-2.5 w-px bg-foreground/10" />
+      {book.hasNew && (
+        <span className="absolute top-3 end-3 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-bold text-accent-foreground shadow-sm animate-pulse">جديد</span>
+      )}
+      <div className="p-5 ps-8 space-y-4 min-h-44 flex flex-col">
+        <BookMarked className="size-7 text-primary transition-transform duration-300 group-hover:scale-110" />
+        <div className="flex-1 space-y-1.5">
+          <Badge variant="secondary" className="text-[10px]">{sub?.sub || "مادة"}</Badge>
           <h3 className="font-extrabold text-base leading-snug">{sub?.label ?? book.subject}</h3>
-          {sub?.sub && <p className="text-xs text-muted-foreground" dir="ltr">{sub.sub}</p>}
-          <p className="text-sm text-muted-foreground pt-1">✍️ {author}</p>
         </div>
-        <Badge variant="secondary" className="self-start">{book.count} {book.count > 2 ? "دروس" : "درس"}</Badge>
+        <span className="self-start inline-flex items-center gap-1.5 rounded-full bg-primary/10 text-primary px-3 py-1 text-xs font-bold">
+          <FileText className="size-3.5" /> {book.count} {book.count > 2 ? "دروس" : "درس"}
+        </span>
       </div>
     </button>
+  );
+}
+
+/* ---------- Filter modal ---------- */
+function FilterDialog({ open, onOpenChange, filters, onApply, uploaders, myId, myName }: {
+  open: boolean; onOpenChange: (o: boolean) => void; filters: Filters; onApply: (f: Filters) => void;
+  uploaders: Profile[]; myId: string | undefined; myName: string | null | undefined;
+}) {
+  const [draft, setDraft] = useState<Filters>(filters);
+  useEffect(() => { if (open) setDraft(filters); }, [open, filters]);
+  const set = (k: keyof Filters) => (v: string) => setDraft((d) => ({ ...d, [k]: v }));
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader><DialogTitle className="flex items-center gap-2"><SlidersHorizontal className="size-5" /> تصفية الكراريس</DialogTitle></DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label>المادة</Label>
+            <Select value={draft.subject} onValueChange={set("subject")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل المواد</SelectItem>
+                {SUBJECTS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>نوع المحتوى</Label>
+            <Select value={draft.type} onValueChange={set("type")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">الكل</SelectItem>
+                {CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>التلميذ</Label>
+            <Select value={draft.student} onValueChange={set("student")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">جميع التلاميذ</SelectItem>
+                {myId && myName && <SelectItem value={myId}>كراريسي ({myName})</SelectItem>}
+                {uploaders.filter((p) => p.id !== myId).map((p) => (
+                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>الفصل الدراسي</Label>
+            <Select value={draft.semester} onValueChange={set("semester")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الفصول</SelectItem>
+                {SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex gap-2 pt-1">
+            <Button className="flex-1" onClick={() => { onApply(draft); onOpenChange(false); }}>تطبيق التصفية</Button>
+            <Button variant="outline" onClick={() => { setDraft(EMPTY_FILTERS); onApply(EMPTY_FILTERS); onOpenChange(false); }}>إعادة التعيين</Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -370,6 +429,7 @@ function LessonRow({ lesson: l, parent, onOpen, controls }: {
               {contentTypeLabel(l.content_type)}
             </Badge>
             {l.unit && <span>{l.unit}</span>}
+            {l.semester && <span>· {semesterLabel(l.semester)}</span>}
             {l.domain && <span>· {l.domain}</span>}
             {parent && <span className="text-primary inline-flex items-center gap-0.5"><Link2 className="size-3" /> تتمة: {parent.title}</span>}
           </span>
@@ -434,6 +494,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
   const [type, setType] = useState<string>("lesson");
+  const [semester, setSemester] = useState<string>("s1");
   const [domain, setDomain] = useState("");
   const [unit, setUnit] = useState("");
   const [isCont, setIsCont] = useState(false);
@@ -449,7 +510,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
 
   function resetForm() {
     setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId("");
-    setFiles([]); setType("lesson"); setProgress("");
+    setFiles([]); setType("lesson"); setSemester("s1"); setProgress("");
   }
 
   async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -489,7 +550,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
         if (up.error) throw up.error;
         uploadedPaths.push(path);
         rows.push({id: !parent && i===0 ? rootId : crypto.randomUUID(), user_id:userId,
-          title:title.trim(),subject,content_type:type,domain:domain.trim() || null,unit:unit.trim() || null,
+          title:title.trim(),subject,content_type:type,semester,domain:domain.trim() || null,unit:unit.trim() || null,
           parent_lesson_id:parent || i>0 ? rootId : null,page_number:pageNumber+i,image_path:path,order_index:order+i});
       }
       const {error}=await supabase.from("lessons").insert(rows);
@@ -532,6 +593,11 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
+              </Select></div>
+            <div className="space-y-1.5"><Label>الفصل الدراسي *</Label>
+              <Select value={semester} onValueChange={setSemester}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
               </Select></div>
             <div className="space-y-1.5"><Label>الميدان / المجال</Label>
               <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="Gramática" /></div>
