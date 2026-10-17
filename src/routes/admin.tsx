@@ -143,8 +143,7 @@ function UsersPanel() {
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     return (users.data ?? []).filter((u) => {
-      const role = u.roles.includes("admin") ? "admin" : u.roles.includes("writer") ? "writer" : "student";
-      if (filter === "banned" ? !u.banned : filter !== "all" && role !== filter) return false;
+      if (filter === "banned" ? !u.banned : filter !== "all" && !u.roles.includes(filter)) return false;
       return !t || u.email?.toLowerCase().includes(t) || u.full_name?.toLowerCase().includes(t);
     });
   }, [users.data, q, filter]);
@@ -157,6 +156,16 @@ function UsersPanel() {
     setBusy(null);
     if (error) { toast.error("تعذّر تغيير الدور"); return; }
     toast.success(writer ? "أصبح كاتباً معتمداً" : "أصبح تلميذاً");
+    refresh();
+  }
+  async function setSubscriber(id: string, subscriber: boolean) {
+    setBusy(id);
+    const { error } = await supabase.rpc("admin_set_subscriber", { _user_id: id, _is_subscriber: subscriber });
+    setBusy(null);
+    if (error) { toast.error("تعذّر تغيير الاشتراك"); return; }
+    toast.success(subscriber ? "تم تفعيل الاشتراك" : "تم إلغاء الاشتراك");
+    qc.invalidateQueries({queryKey:["my-roles"]});
+    qc.removeQueries({queryKey:["formatted-page"]});
     refresh();
   }
   async function ban(email: string) {
@@ -188,6 +197,7 @@ function UsersPanel() {
             <SelectItem value="all">الجميع</SelectItem>
             <SelectItem value="student">التلاميذ</SelectItem>
             <SelectItem value="writer">الكتّاب</SelectItem>
+            <SelectItem value="subscriber">المشتركون</SelectItem>
             <SelectItem value="admin">المشرفون</SelectItem>
             <SelectItem value="banned">المحظورون</SelectItem>
           </SelectContent>
@@ -224,6 +234,11 @@ function UsersPanel() {
                         </button>
                       ))}
                     </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <Switch aria-label={`اشتراك ${u.full_name || u.email}`} checked={u.roles.includes("subscriber")} disabled={busy === u.id}
+                        onCheckedChange={v => setSubscriber(u.id, v)} />
+                      {u.roles.includes("subscriber") ? "مشترك" : "غير مشترك"}
+                    </label>
                     {u.banned
                       ? <Button size="sm" variant="outline" onClick={() => unban(u.email)}><Undo2 className="size-4" /> رفع الحظر</Button>
                       : <Button size="sm" variant="outline" className="text-destructive" onClick={() => ban(u.email)}><Ban className="size-4" /> حظر</Button>}

@@ -8,6 +8,27 @@
       "when": 1792225596453,
       "tag": "0000_notebook_reads_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792226793365,
+      "tag": "0001_add_subscriber_role",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792226809569,
+      "tag": "0002_secure_formatted_notebooks",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792227014084,
+      "tag": "0003_restrict_formatted_page_grants",
+      "breakpoints": true
     }
   ]
 }

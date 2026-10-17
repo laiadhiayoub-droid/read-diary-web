@@ -89,3 +89,17 @@
 @utility margin-line {
   border-inline-start: 3px double oklch(0.65 0.15 25 / 45%);
 }
+
+:root {
+  --document-paper: #ffffff;
+  --document-ink: #202124;
+  --document-shadow: 0 4px 22px #00000018;
+}
+.digital-sheet { background: var(--document-paper); color: var(--document-ink); box-shadow: var(--document-shadow); width: min(100%, 794px); min-height: 700px; padding: 64px 72px 36px; font-size: 17px; line-height: 1.9; }
+.document-block { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 16px; }
+.document-heading { font-size: 26px; line-height: 1.5; margin-bottom: 26px; }
+.document-subheading { font-size: 21px; line-height: 1.6; }
+.document-list { padding-inline-start: 20px; }
+.document-quote { border-inline-start: 2px solid var(--border); padding-inline-start: 16px; }
+.document-footer { margin-top: 48px; border-top: 1px solid var(--border); text-align: center; padding-top: 12px; font-size: 12px; }
+@media (max-width: 640px) { .digital-sheet { padding: 30px 22px; min-height: 550px; font-size: 16px; } .document-heading { font-size: 22px; } }
