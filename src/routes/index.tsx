@@ -317,6 +317,11 @@ function Index() {
                 </h2>
                 <p className="text-sm text-muted-foreground">{bookLessons.length} صفحة</p>
               </div>
+              {bookLessons[0] && (
+                <Button variant="outline" size="sm" onClick={() => shareLesson(bookLessons[0])}>
+                  <Share2 className="size-4" /> نسخ الرابط
+                </Button>
+              )}
             </div>
 
             <div className="relative max-w-md">
@@ -468,10 +473,20 @@ function Index() {
       <DhikrPill />
 
       {needsName && user && <NameDialog userId={user.id} onDone={() => qc.invalidateQueries({ queryKey: ["profiles"] })} />}
-      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters}
-        uploaders={uploaders} myId={user?.id} myName={myProfile?.full_name} />
+      <FilterDialog open={filterOpen} onOpenChange={setFilterOpen} filters={filters} onApply={setFilters} units={unitOptions} />
+      <Dialog open={!!deleting} onOpenChange={(o) => { if (!o) setDeleting(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader><DialogTitle className="pe-8">تأكيد الحذف</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">هل أنت متأكد من الحذف؟ سيُحذف «{deleting?.title}» وكل صفحاته التابعة نهائياً.</p>
+          <div className="flex gap-2">
+            <Button variant="destructive" className="flex-1" onClick={deleteLesson}>نعم، احذف</Button>
+            <Button variant="outline" className="flex-1" onClick={() => setDeleting(null)}>إلغاء</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       {user && (
         <UploadDialog open={uploadOpen} onOpenChange={setUploadOpen} userId={user.id}
+          canPublishLessons={canPublish}
           defaultSubject={filters.subject === "all" ? "spanish" : filters.subject}
           myLessons={(lessons.data ?? []).filter((l) => l.user_id === user.id)}
           onDone={() => qc.invalidateQueries({ queryKey: ["lessons"] })} />
