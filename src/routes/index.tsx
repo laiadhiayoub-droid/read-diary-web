@@ -555,25 +555,22 @@ function FilterDialog({ open, onOpenChange, filters, onApply, units }: {
             </Select>
           </div>
           <div className="space-y-1.5">
-            <Label>التلميذ</Label>
-            <Select value={draft.student} onValueChange={set("student")}>
-              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">جميع التلاميذ</SelectItem>
-                {myId && myName && <SelectItem value={myId}>كراريسي ({myName})</SelectItem>}
-                {uploaders.filter((p) => p.id !== myId).map((p) => (
-                  <SelectItem key={p.id} value={p.id}>{p.full_name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
             <Label>الفصل الدراسي</Label>
             <Select value={draft.semester} onValueChange={set("semester")}>
               <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">كل الفصول</SelectItem>
                 {SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label>المحور / الوحدة</Label>
+            <Select value={draft.unit} onValueChange={set("unit")}>
+              <SelectTrigger className="bg-card"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">كل الوحدات</SelectItem>
+                {units.map((u) => <SelectItem key={u} value={u}>{u}</SelectItem>)}
               </SelectContent>
             </Select>
           </div>
