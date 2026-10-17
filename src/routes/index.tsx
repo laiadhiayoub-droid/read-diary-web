@@ -156,6 +156,8 @@ function Index() {
     if (r.error) toast.error("فشل تسجيل الدخول");
   }
   async function signOut() {
+    await qc.cancelQueries();
+    qc.clear();
     await supabase.auth.signOut();
     setStudentId("all");
     setOpenBook(null);
