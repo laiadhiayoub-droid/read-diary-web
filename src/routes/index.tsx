@@ -493,6 +493,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState(defaultSubject);
   const [type, setType] = useState<string>("lesson");
+  const [semester, setSemester] = useState<string>("s1");
   const [domain, setDomain] = useState("");
   const [unit, setUnit] = useState("");
   const [isCont, setIsCont] = useState(false);
@@ -508,7 +509,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
 
   function resetForm() {
     setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId("");
-    setFiles([]); setType("lesson"); setProgress("");
+    setFiles([]); setType("lesson"); setSemester("s1"); setProgress("");
   }
 
   async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
@@ -548,7 +549,7 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
         if (up.error) throw up.error;
         uploadedPaths.push(path);
         rows.push({id: !parent && i===0 ? rootId : crypto.randomUUID(), user_id:userId,
-          title:title.trim(),subject,content_type:type,domain:domain.trim() || null,unit:unit.trim() || null,
+          title:title.trim(),subject,content_type:type,semester,domain:domain.trim() || null,unit:unit.trim() || null,
           parent_lesson_id:parent || i>0 ? rootId : null,page_number:pageNumber+i,image_path:path,order_index:order+i});
       }
       const {error}=await supabase.from("lessons").insert(rows);
@@ -591,6 +592,11 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
               <Select value={type} onValueChange={setType}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{CONTENT_TYPES.map((c) => <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>)}</SelectContent>
+              </Select></div>
+            <div className="space-y-1.5"><Label>الفصل الدراسي *</Label>
+              <Select value={semester} onValueChange={setSemester}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{SEMESTERS.map((s) => <SelectItem key={s.id} value={s.id}>{s.label}</SelectItem>)}</SelectContent>
               </Select></div>
             <div className="space-y-1.5"><Label>الميدان / المجال</Label>
               <Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="Gramática" /></div>
