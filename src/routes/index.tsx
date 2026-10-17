@@ -617,6 +617,24 @@ function LessonRow({ lesson: l, parent, author, starred, onStar, onShare, onDele
           <span className="block">{new Date(l.created_at).toLocaleDateString("ar-DZ")}</span>
         </span>
       </button>
+      <span className="flex flex-col gap-1 shrink-0">
+        {onStar && (
+          <Button size="icon" variant="ghost" className="size-7" onClick={onStar}
+            aria-label={starred ? "إزالة من المفضلة" : "إضافة للمفضلة"}>
+            <Star className={`size-4 ${starred ? "fill-accent stroke-accent" : ""}`} />
+          </Button>
+        )}
+        {onShare && (
+          <Button size="icon" variant="ghost" className="size-7" onClick={onShare} aria-label="نسخ الرابط">
+            <Share2 className="size-3.5" />
+          </Button>
+        )}
+        {onDelete && (
+          <Button size="icon" variant="ghost" className="size-7 text-destructive hover:bg-destructive/10" onClick={onDelete} aria-label="حذف">
+            <Trash2 className="size-3.5" />
+          </Button>
+        )}
+      </span>
       {controls && (
         <span className="flex flex-col gap-1 shrink-0">
           <Button size="icon" variant="outline" className="size-7" disabled={!controls.up}
