@@ -585,8 +585,10 @@ function FilterDialog({ open, onOpenChange, filters, onApply, units }: {
 }
 
 /* ---------- Tier 2: clean lesson row (no thumbnail) ---------- */
-function LessonRow({ lesson: l, parent, onOpen, controls }: {
-  lesson: Lesson; parent?: Lesson | undefined;
+function LessonRow({ lesson: l, parent, author, starred, onStar, onShare, onDelete, onOpen, controls }: {
+  lesson: Lesson; parent?: Lesson | undefined; author?: string | undefined;
+  starred?: boolean | undefined; onStar?: (() => void) | undefined;
+  onShare?: (() => void) | undefined; onDelete?: (() => void) | undefined;
   onOpen: () => void;
   controls?: { up: (() => void) | undefined; down: (() => void) | undefined } | undefined;
 }) {
