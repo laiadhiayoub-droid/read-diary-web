@@ -76,7 +76,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
     <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[94vh] overflow-hidden p-0 gap-0">
       <DialogTitle className="sr-only">{page?.title || "الكراس"}</DialogTitle>
       <div className="flex flex-wrap gap-2 items-center border-b p-4 px-12">
-        <div className="min-w-0 flex-1"><h2 className="font-bold break-words">{page?.title}</h2><p className="text-xs text-muted-foreground">صفحة {index+1} من {pages.length}</p></div>
+        <div className="min-w-0 w-full sm:w-auto sm:flex-1"><h2 className="font-bold break-words">{page?.title}</h2><p className="text-xs text-muted-foreground">صفحة {index+1} من {pages.length}</p></div>
         <Button size="sm" variant={mode==="original"?"default":"outline"} onClick={()=>setMode("original")}><BookOpen className="size-4"/>الأصل</Button>
         <Button size="sm" variant={mode==="formatted"?"default":"outline"} onClick={()=>setMode("formatted")}>{allowed?<FileText className="size-4"/>:<Lock className="size-4"/>}الكراس المنسّق</Button>
       </div>
