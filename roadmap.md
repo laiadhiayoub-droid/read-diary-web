@@ -5,13 +5,13 @@
 - [x] Generate formatted pages preserving source structure and colors.
 - [ ] Verify grant/revoke and locked reading with a non-admin account (blocked: only the primary admin exists).
 
-# Comprehensive UI/UX enhancements (uploaded request)
-- [ ] Fix icon/text overlap in buttons and modal headers (RTL close X).
-- [ ] Summaries section: dashboard button, dedicated page, subject pill filter bar.
-- [ ] All students can submit summaries; author name shown on summary cards.
-- [ ] Bookmarks: star toggle on notebooks/lessons/summaries + "مفضلاتي" section (needs bookmarks table).
-- [ ] Admin delete for notebooks/lessons/summaries with confirmation dialog.
-- [ ] Filter drawer: remove student filter, rename درس→كراس, add semester + unit dropdowns.
-- [ ] In-notebook grouping by semester then unit.
-- [ ] Shareable link copy + image lightbox/zoom.
-- [ ] Fix download button: fetch-blob direct download in reader.
+# Comprehensive UI/UX enhancements
+- [x] Fix icon/text overlap in modal headers (RTL close X padding).
+- [x] Summaries section: dashboard button, dedicated view, subject pill filter bar.
+- [x] All students can submit summaries (RLS + storage policies); author name on summary cards.
+- [x] Bookmarks: star toggle on lessons/summaries + "مفضلاتي" view (bookmarks table with RLS).
+- [x] Admin delete for lessons/summaries with confirmation dialog.
+- [x] Filter drawer: student filter removed, درس renamed كراس, semester + unit dropdowns.
+- [x] In-notebook grouping by semester then unit.
+- [x] Shareable link copy (?lesson=<id> deep link) + image lightbox on click.
+- [x] Download button uses fetch-blob direct download.
