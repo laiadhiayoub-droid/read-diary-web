@@ -17,6 +17,6 @@ describe("subscriber notebook rules", () => {
   it("keeps source colors, highlights and text without modification", () => {
     const doc = {direction:"rtl", blocks:[{kind:"heading",runs:[{text:"عنوان أصلي",color:"#ff0000",highlight:"#ffff00",bold:true,underline:true}]}],uncertain:false};
     expect(notebookDocumentSchema.parse(doc)).toEqual(doc);
-    expect(notebookDocumentSchema.safeParse({...doc, blocks:[{kind:"heading",runs:[{...doc.blocks[0].runs[0],color:"url(evil)"}]}]}).success).toBe(false);
+    expect(notebookDocumentSchema.safeParse({...doc, blocks:[{kind:"heading",runs:[{text:"عنوان أصلي",color:"url(evil)",highlight:null,bold:false,underline:false}]}]}).success).toBe(false);
   });
 });

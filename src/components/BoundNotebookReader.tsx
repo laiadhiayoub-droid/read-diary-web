@@ -29,10 +29,10 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
     if(error) throw error;return data;
   }});
   const parsed=notebookDocumentSchema.safeParse(formatted.data?.document);
-  async function prepare() {
+  async function prepare(resume = false) {
     if(!page || busy) return;
     setBusy(true);setFailure(null);
-    try { const result=await generate({data:{lessonId:page.id}}); if(result.status==="error")setFailure(result.message); await formatted.refetch(); }
+    try { const result=await generate({data:{lessonId:page.id,resume}}); if(result.status==="error")setFailure(result.message); await formatted.refetch(); }
     catch {setFailure("تعذّر تنسيق الصفحة.");} finally {setBusy(false);}
   }
   return <Dialog open={!!initialId} onOpenChange={open=>{if(!open)onClose();}}>
@@ -57,7 +57,8 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
         </> : <div className="text-center py-16 space-y-4">
           <FileText className="size-9 mx-auto text-primary"/>
           <p>{failure || formatted.data?.error_message || (formatted.isError?"تعذّر فتح الكراس المنسّق.":"الصفحة المنسّقة ليست جاهزة بعد.")}</p>
-          <Button onClick={prepare} disabled={busy || formatted.isLoading}>{busy?<Loader2 className="size-4 animate-spin"/>:<RefreshCw className="size-4"/>}{busy?"جارٍ التنسيق…":"تنسيق الصفحة"}</Button>
+          <Button onClick={()=>prepare()} disabled={busy || formatted.isLoading}>{busy?<Loader2 className="size-4 animate-spin"/>:<RefreshCw className="size-4"/>}{busy?"جارٍ التنسيق…":"تنسيق الصفحة"}</Button>
+          {roles.includes("admin") && (failure || formatted.data?.status === "error") && <Button variant="outline" disabled={busy} onClick={()=>prepare(true)}>إعادة تفعيل التحويل</Button>}
         </div>}
       </div>
       <div className="flex items-center justify-between border-t p-3">
