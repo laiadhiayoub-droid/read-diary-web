@@ -99,7 +99,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
       {mode === "original" && <div className="flex justify-center gap-2 border-b p-2">
         <Button variant="ghost" size="icon" aria-label="تكبير" onClick={()=>setScale(s=>Math.min(3,s+0.25))}><ZoomIn className="size-4"/></Button>
         <Button variant="ghost" size="icon" aria-label="تصغير" onClick={()=>setScale(s=>Math.max(0.5,s-0.25))}><ZoomOut className="size-4"/></Button>
-        {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} download={`${page?.title}.jpg`} target="_blank" rel="noreferrer" aria-label="تحميل"><Download className="size-4"/></a></Button>}
+        {image.data && <Button variant="ghost" size="icon" disabled={downloading} onClick={downloadImage} aria-label="تحميل">{downloading?<Loader2 className="size-4 animate-spin"/>:<Download className="size-4"/>}</Button>}
         {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} target="_blank" rel="noreferrer" aria-label="فتح بالحجم الكامل"><ExternalLink className="size-4"/></a></Button>}
       </div>}
       {editing && <div className="flex justify-center gap-2 border-b p-2">
@@ -108,7 +108,7 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
       </div>}
       <div className="overflow-y-auto bg-muted p-3 sm:p-6 min-h-64 max-h-[70vh]">
         {mode==="original" ? image.data ? <div className="overflow-auto" style={{touchAction:"pan-x pan-y"}} onTouchMove={onTouchMove} onTouchEnd={()=>{pinch.current=null;}}>
-            <img className="mx-auto max-w-full h-auto select-none" style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/>
+            <img className="mx-auto max-w-full h-auto select-none cursor-zoom-in" onClick={()=>setLightbox(true)} style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/>
           </div> : <p className="text-center py-16">{image.isError?"تعذّر تحميل الصورة.":"جارٍ تحميل الصفحة…"}</p>
         : !allowed ? <div className="text-center py-16 space-y-4"><Lock className="size-9 mx-auto text-primary"/><p>{LOCKED_NOTEBOOK_MESSAGE}</p></div>
         : editing && draft ? <article className="digital-sheet mx-auto" dir={draft.direction}>
