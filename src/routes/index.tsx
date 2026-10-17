@@ -22,6 +22,10 @@ import {
 import { Timetable } from "@/components/Timetable";
 import { DhikrPill } from "@/components/DhikrPill";
 import { SUBJECTS, CONTENT_TYPES, subjectLabel, contentTypeLabel, compressImage } from "@/lib/library";
+import { BoundNotebookReader } from "@/components/BoundNotebookReader";
+import { nextPageNumber, orderedBookPages } from "@/lib/notebook";
+import { generateFormattedPage } from "@/lib/notebook.functions";
+import { useServerFn } from "@tanstack/react-start";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -83,7 +87,8 @@ function Index() {
     queryKey: ["my-roles", user?.id],
     enabled: !!user,
     queryFn: async () => {
-      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", user!.id);
+      if (!user) return [];
+      const { data, error } = await supabase.from("user_roles").select("role").eq("user_id", user.id);
       if (error) throw error;
       return data.map((r) => r.role);
     },
@@ -125,7 +130,7 @@ function Index() {
   // Tier 2: lessons inside the open book
   const bookLessons = useMemo(() => {
     if (!openBook) return [];
-    return (lessons.data ?? []).filter((l) => l.user_id === openBook.userId && l.subject === openBook.subject);
+    return orderedBookPages((lessons.data ?? []).filter((l) => l.user_id === openBook.userId && l.subject === openBook.subject));
   }, [lessons.data, openBook]);
 
   const isOwnerBook = !!user && openBook?.userId === user.id;
@@ -134,8 +139,10 @@ function Index() {
     const a = bookLessons[index], b = bookLessons[index + dir];
     if (!a || !b) return;
     const updates = bookLessons.map((l, i) => ({ id: l.id, order_index: i }));
-    updates[index]!.order_index = index + dir;
-    updates[index + dir]!.order_index = index;
+    const first = updates[index], second = updates[index + dir];
+    if (!first || !second) return;
+    first.order_index = index + dir;
+    second.order_index = index;
     const results = await Promise.all(
       updates.map((u) => supabase.from("lessons").update({ order_index: u.order_index }).eq("id", u.id)),
     );
@@ -316,7 +323,7 @@ function Index() {
           myLessons={(lessons.data ?? []).filter((l) => l.user_id === user.id)}
           onDone={() => qc.invalidateQueries({ queryKey: ["lessons"] })} />
       )}
-      <ImageModal lesson={zoom} onClose={() => setZoom(null)} />
+      <BoundNotebookReader pages={bookLessons} initialId={zoom?.id ?? null} roles={roles.data ?? []} onClose={() => setZoom(null)} />
     </div>
   );
 }
@@ -382,69 +389,6 @@ function LessonRow({ lesson: l, parent, onOpen, controls }: {
   );
 }
 
-/* ---------- Tier 3: full image modal with zoom & download ---------- */
-function ImageModal({ lesson, onClose }: { lesson: Lesson | null; onClose: () => void }) {
-  const [scale, setScale] = useState(1);
-  useEffect(() => { setScale(1); }, [lesson?.id]);
-
-  const url = useQuery({
-    queryKey: ["img", lesson?.image_path],
-    enabled: !!lesson,
-    staleTime: 50 * 60 * 1000,
-    queryFn: async () => {
-      const { data, error } = await supabase.storage.from("lessons-images").createSignedUrl(lesson!.image_path, 3600);
-      if (error) throw error;
-      return data.signedUrl;
-    },
-  });
-
-  function trackView() {
-    if (!lesson) return;
-    supabase.auth.getUser().then(({ data }) => {
-      if (data.user) supabase.from("lesson_views").insert({ lesson_id: lesson.id, user_id: data.user.id, subject: lesson.subject }).then(() => {});
-    });
-  }
-
-  return (
-    <Dialog open={!!lesson} onOpenChange={(o) => { if (!o) onClose(); else trackView(); }}>
-      <DialogContent className="max-w-[95vw] max-h-[95vh] p-0 bg-foreground border-0 overflow-hidden">
-        <DialogTitle className="sr-only">{lesson?.title ?? "صورة الصفحة"}</DialogTitle>
-        {lesson && (
-          <div className="flex flex-col max-h-[95vh]">
-            <div className="flex items-center gap-2 p-2 text-background">
-              <span className="flex-1 min-w-0 truncate text-sm font-bold px-2">{lesson.title}</span>
-              <Button size="icon" variant="ghost" className="text-background hover:bg-background/20"
-                onClick={() => setScale((s) => Math.min(3, +(s + 0.25).toFixed(2)))} aria-label="تكبير">
-                <ZoomIn className="size-4" />
-              </Button>
-              <Button size="icon" variant="ghost" className="text-background hover:bg-background/20"
-                onClick={() => setScale((s) => Math.max(0.5, +(s - 0.25).toFixed(2)))} aria-label="تصغير">
-                <ZoomOut className="size-4" />
-              </Button>
-              {url.data && (
-                <Button size="icon" variant="ghost" className="text-background hover:bg-background/20" asChild>
-                  <a href={url.data} download={`${lesson.title}.jpg`} target="_blank" rel="noreferrer" aria-label="تحميل">
-                    <Download className="size-4" />
-                  </a>
-                </Button>
-              )}
-            </div>
-            <div className="flex-1 overflow-auto grid place-items-center p-2">
-              {url.data ? (
-                <img src={url.data} alt={lesson.title}
-                  style={{ transform: `scale(${scale})`, transformOrigin: "center top" }}
-                  className="max-h-[80vh] w-auto object-contain transition-transform" />
-              ) : (
-                <Loader2 className="animate-spin text-background my-20" />
-              )}
-            </div>
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 function NameDialog({ userId, onDone }: { userId: string; onDone: () => void }) {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
@@ -492,7 +436,9 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const [unit, setUnit] = useState("");
   const [isCont, setIsCont] = useState(false);
   const [parentId, setParentId] = useState("");
-  const [file, setFile] = useState<File | null>(null);
+  const [files, setFiles] = useState<File[]>([]);
+  const [progress, setProgress] = useState("");
+  const generate = useServerFn(generateFormattedPage);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => { if (open) setSubject(defaultSubject); }, [open, defaultSubject]);
@@ -500,35 +446,52 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const roots = notebook.filter((l) => !l.parent_lesson_id);
 
   async function submit() {
+    if (busy) return;
     if (!title.trim()) { toast.error("عنوان الدرس مطلوب"); return; }
-    if (!file) { toast.error("أضف صورة الصفحة"); return; }
+    if (!files.length) { toast.error("أضف صور الصفحات"); return; }
     if (isCont && !parentId) { toast.error("اختر الدرس السابق"); return; }
     setBusy(true);
+    const uploadedPaths: string[] = [];
+    let published = false;
     try {
-      const blob = await compressImage(file);
-      const path = `${userId}/${crypto.randomUUID()}.jpg`;
-      const up = await supabase.storage.from("lessons-images").upload(path, blob, { contentType: "image/jpeg" });
-      if (up.error) throw up.error;
       const parent = isCont ? notebook.find((l) => l.id === parentId) : undefined;
-      const pageNumber = parent ? 1 + notebook.filter((l) => l.id === parent.id || l.parent_lesson_id === parent.id).length : 1;
+      const rootId = parent?.id ?? crypto.randomUUID();
+      const pageNumber = nextPageNumber(notebook, parent?.id ?? null);
       const order = notebook.reduce((m, l) => Math.max(m, l.order_index), -1) + 1;
-      const { error } = await supabase.from("lessons").insert({
-        user_id: userId, title: title.trim(), subject, content_type: type,
-        domain: domain.trim() || null, unit: unit.trim() || null,
-        parent_lesson_id: parent?.id ?? null, page_number: pageNumber,
-        image_path: path, order_index: order,
-      });
-      if (error) throw error;
-      toast.success("تمت إضافة الصفحة إلى كراسك");
-      setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId(""); setFile(null);
-      onDone(); onOpenChange(false);
+      const rows = [];
+      for (const [i, file] of files.entries()) {
+        setProgress(`رفع الصفحة ${i+1} من ${files.length}`);
+        const blob = await compressImage(file);
+        const path = `${userId}/${crypto.randomUUID()}.jpg`;
+        const up = await supabase.storage.from("lessons-images").upload(path, blob, { contentType: "image/jpeg" });
+        if (up.error) throw up.error;
+        uploadedPaths.push(path);
+        rows.push({id: !parent && i===0 ? rootId : crypto.randomUUID(), user_id:userId,
+          title:title.trim(),subject,content_type:type,domain:domain.trim() || null,unit:unit.trim() || null,
+          parent_lesson_id:parent || i>0 ? rootId : null,page_number:pageNumber+i,image_path:path,order_index:order+i});
+      }
+      const {error}=await supabase.from("lessons").insert(rows);
+      if(error) throw error;
+      published = true;
+      onDone();
+      toast.success(`تم ربط ${rows.length} صفحة في الكراس`);
+      let formatFailed=false;
+      for (const [i,row] of rows.entries()) {
+        setProgress(`تنسيق الصفحة ${i+1} من ${rows.length}`);
+        try {const result=await generate({data:{lessonId:row.id}});if(result.status==="error"){formatFailed=true;break;}}
+        catch {formatFailed=true;break;}
+      }
+      if(formatFailed) toast.warning("حُفظت الصور؛ لم يكتمل التنسيق. يمكن للمشترك أو الإدارة تنسيق الصفحات لاحقاً.");
+      setTitle("");setDomain("");setUnit("");setIsCont(false);setParentId("");setFiles([]);
+      onOpenChange(false);
     } catch {
-      toast.error("حدث خطأ أثناء الرفع");
-    } finally { setBusy(false); }
+      if(!published && uploadedPaths.length) await supabase.storage.from("lessons-images").remove(uploadedPaths);
+      toast.error("حدث خطأ أثناء الرفع؛ لم تُنشر الصفحات.");
+    } finally {setBusy(false);setProgress("");}
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={o => {if(!busy)onOpenChange(o);}}>
       <DialogContent className="max-h-[92vh] overflow-y-auto">
         <DialogHeader><DialogTitle>إضافة درس أو ملخص</DialogTitle></DialogHeader>
         <div className="space-y-3">
@@ -561,12 +524,21 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
             </Select>
           )}
           <label className="flex flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-5 cursor-pointer hover:bg-secondary text-sm text-muted-foreground">
-            {file ? (
-              <span className="flex items-center gap-2 text-foreground">{file.name}
-                <X className="size-4" onClick={(e) => { e.preventDefault(); setFile(null); }} /></span>
-            ) : (<><ImagePlus className="size-6" /> صورة صفحة الكراس (تُضغط تلقائياً)</>)}
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            <ImagePlus className="size-6" /> إضافة صور صفحات الكراس
+            <input type="file" accept="image/*" multiple disabled={busy} className="hidden" onChange={(e) => {
+              setFiles(previous=>[...previous,...Array.from(e.target.files ?? [])].filter(f=>f.type.startsWith("image/")));
+              e.target.value="";
+            }} />
           </label>
+          <ol className="space-y-2">
+            {files.map((file,i)=><li key={`${file.name}-${i}`} className="flex items-center gap-2 rounded-md border p-2 text-sm">
+              <span className="text-muted-foreground shrink-0">{i+1}</span><span className="flex-1 min-w-0 truncate">{file.name}</span>
+              <Button size="icon" variant="ghost" disabled={busy || i===0} aria-label={`تقديم الصفحة ${i+1}`} onClick={()=>setFiles(prev=>{const next=[...prev];const a=next[i],b=next[i-1];if(a && b){next[i-1]=a;next[i]=b;}return next;})}><ArrowUp className="size-4"/></Button>
+              <Button size="icon" variant="ghost" disabled={busy || i===files.length-1} aria-label={`تأخير الصفحة ${i+1}`} onClick={()=>setFiles(prev=>{const next=[...prev];const a=next[i],b=next[i+1];if(a && b){next[i+1]=a;next[i]=b;}return next;})}><ArrowDown className="size-4"/></Button>
+              <Button size="icon" variant="ghost" disabled={busy} aria-label={`حذف الصورة ${i+1}`} onClick={()=>setFiles(prev=>prev.filter((_,j)=>j!==i))}><X className="size-4"/></Button>
+            </li>)}
+          </ol>
+          {progress && <p role="status" className="text-sm text-muted-foreground">{progress}</p>}
           <Button className="w-full" onClick={submit} disabled={busy}>
             {busy && <Loader2 className="animate-spin size-4" />} حفظ في الكراس
           </Button>
