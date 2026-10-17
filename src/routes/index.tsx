@@ -43,11 +43,14 @@ export const Route = createFileRoute("/")({
 
 type Lesson = {
   id: string; user_id: string; title: string; subject: string; content_type: string;
-  domain: string | null; unit: string | null; page_number: number;
+  domain: string | null; unit: string | null; page_number: number; semester: string | null;
   parent_lesson_id: string | null; image_path: string; order_index: number; created_at: string;
 };
 type Profile = { id: string; full_name: string | null };
-type Book = { userId: string; subject: string; count: number };
+type Book = { userId: string; subject: string; count: number; hasNew: boolean };
+type Filters = { student: string; subject: string; type: string; semester: string };
+const EMPTY_FILTERS: Filters = { student: "all", subject: "all", type: "all", semester: "all" };
+const NEW_DAYS = 7;
 
 function useUser() {
   const [user, setUser] = useState<User | null>(null);
@@ -97,9 +100,9 @@ function Index() {
   const canPublish = isAdmin || !!roles.data?.includes("writer");
   const needsName = !!user && profiles.isSuccess && !myProfile?.full_name;
 
-  const [studentId, setStudentId] = useState<string>("all");
-  const [subject, setSubject] = useState<string>("spanish");
-  const [q, setQ] = useState("");
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [bookQ, setBookQ] = useState("");
   const [uploadOpen, setUploadOpen] = useState(false);
   const [zoom, setZoom] = useState<Lesson | null>(null);
   const [openBook, setOpenBook] = useState<Book | null>(null);
@@ -112,26 +115,33 @@ function Index() {
 
   // Tier 1: book covers — one card per (student, subject) notebook
   const books = useMemo(() => {
-    const term = q.trim().toLowerCase();
+    const cutoff = Date.now() - NEW_DAYS * 24 * 60 * 60 * 1000;
     const map = new Map<string, Book>();
     for (const l of lessons.data ?? []) {
-      if (studentId !== "all" && l.user_id !== studentId) continue;
-      if (subject !== "all" && l.subject !== subject) continue;
-      if (term && ![l.title, l.domain, l.unit, nameOf(l.user_id)].some((v) => v?.toLowerCase().includes(term))) continue;
+      if (filters.student !== "all" && l.user_id !== filters.student) continue;
+      if (filters.subject !== "all" && l.subject !== filters.subject) continue;
+      if (filters.type !== "all" && l.content_type !== filters.type) continue;
+      if (filters.semester !== "all" && l.semester !== filters.semester) continue;
       const key = `${l.user_id}:${l.subject}`;
-      const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0 };
+      const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0, hasNew: false };
       b.count++;
+      if (new Date(l.created_at).getTime() >= cutoff) b.hasNew = true;
       map.set(key, b);
     }
     return [...map.values()].sort((a, b) => nameOf(a.userId).localeCompare(nameOf(b.userId), "ar"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessons.data, studentId, subject, q, profiles.data]);
+  }, [lessons.data, filters, profiles.data]);
 
-  // Tier 2: lessons inside the open book
+  // Tier 2: lessons inside the open book (searchable within the notebook)
   const bookLessons = useMemo(() => {
     if (!openBook) return [];
-    return orderedBookPages((lessons.data ?? []).filter((l) => l.user_id === openBook.userId && l.subject === openBook.subject));
-  }, [lessons.data, openBook]);
+    const term = bookQ.trim().toLowerCase();
+    return orderedBookPages(
+      (lessons.data ?? []).filter((l) =>
+        l.user_id === openBook.userId && l.subject === openBook.subject &&
+        (!term || [l.title, l.domain, l.unit].some((v) => v?.toLowerCase().includes(term)))),
+    );
+  }, [lessons.data, openBook, bookQ]);
 
   const isOwnerBook = !!user && openBook?.userId === user.id;
 

@@ -16,7 +16,14 @@ export const CONTENT_TYPES = [
   { id: "summary", label: "ملخص" },
 ] as const;
 
+export const SEMESTERS = [
+  { id: "s1", label: "الفصل الأول" },
+  { id: "s2", label: "الفصل الثاني" },
+  { id: "s3", label: "الفصل الثالث" },
+] as const;
+
 export const subjectLabel = (id: string) => SUBJECTS.find((s) => s.id === id)?.label ?? id;
+export const semesterLabel = (id: string | null) => SEMESTERS.find((s) => s.id === id)?.label ?? "";
 export const contentTypeLabel = (id: string) =>
   CONTENT_TYPES.find((c) => c.id === id)?.label ?? id;
 
