@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   BookOpen, LogOut, Plus, Search, ArrowUp, ArrowDown, Link2, Loader2, ImagePlus, X,
   NotebookPen, ShieldCheck, Lock as LockIcon, BookMarked, FileText, ArrowRight,
-  ZoomIn, ZoomOut, Download, SlidersHorizontal,
+  ZoomIn, ZoomOut, Download, SlidersHorizontal, Star, Trash2, Share2, GraduationCap,
 } from "lucide-react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,9 +48,10 @@ type Lesson = {
 };
 type Profile = { id: string; full_name: string | null };
 type Book = { userId: string; subject: string; count: number; hasNew: boolean };
-type Filters = { student: string; subject: string; type: string; semester: string };
-const EMPTY_FILTERS: Filters = { student: "all", subject: "all", type: "all", semester: "all" };
+type Filters = { subject: string; type: string; semester: string; unit: string };
+const EMPTY_FILTERS: Filters = { subject: "all", type: "all", semester: "all", unit: "all" };
 const NEW_DAYS = 7;
+type View = "books" | "summaries" | "favorites";
 
 function useUser() {
   const [user, setUser] = useState<User | null>(null);
