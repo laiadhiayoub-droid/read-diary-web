@@ -198,6 +198,37 @@ function Index() {
     );
   }, [lessons.data, openBook, bookQ]);
 
+  // Group notebook pages by semester, then by unit
+  const groupedBookLessons = useMemo(() => {
+    const groups: { semester: string; units: { unit: string; items: Lesson[] }[] }[] = [];
+    for (const l of bookLessons) {
+      const s = l.semester || "none";
+      const u = l.unit || "none";
+      let sg = groups.find((g) => g.semester === s);
+      if (!sg) { sg = { semester: s, units: [] }; groups.push(sg); }
+      let ug = sg.units.find((x) => x.unit === u);
+      if (!ug) { ug = { unit: u, items: [] }; sg.units.push(ug); }
+      ug.items.push(l);
+    }
+    return groups;
+  }, [bookLessons]);
+
+  const unitOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const l of lessons.data ?? []) if (l.unit) set.add(l.unit);
+    return [...set].sort((a, b) => a.localeCompare(b, "ar"));
+  }, [lessons.data]);
+
+  const summaries = useMemo(() => {
+    return (lessons.data ?? [])
+      .filter((l) => l.content_type === "summary" && (summarySubject === "all" || l.subject === summarySubject))
+      .sort((a, b) => b.created_at.localeCompare(a.created_at));
+  }, [lessons.data, summarySubject]);
+
+  const favoriteLessons = useMemo(() => {
+    return (lessons.data ?? []).filter((l) => bookmarked.has(l.id));
+  }, [lessons.data, bookmarked]);
+
   const isOwnerBook = !!user && openBook?.userId === user.id;
 
   async function move(index: number, dir: -1 | 1) {
