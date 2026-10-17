@@ -11,4 +11,5 @@
 
 - Store formatted notebook documents separately from ordinary lesson metadata with subscriber/admin SELECT RLS; never return generated content from the publishing endpoint to writers.
 - Generate one source page per authenticated server request and render validated structured blocks, not arbitrary HTML, to keep source formatting safe and retries page-scoped.
+- Reconstruct notebook diagrams as validated whitelisted SVG primitives rendered by React, never injected markup; retain legacy text blocks and preserve the last ready document if an explicit admin regeneration fails.
 - Bind uploaded batches using the existing root lesson/continuation relationship and deterministic page ordering to preserve existing notebooks.

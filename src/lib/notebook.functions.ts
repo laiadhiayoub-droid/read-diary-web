@@ -23,7 +23,7 @@ export const updateFormattedPage = createServerFn({ method: "POST" })
 
 export const generateFormattedPage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
-  .inputValidator((input: unknown) => z.object({lessonId:z.string().uuid(), resume:z.boolean().optional()}).parse(input))
+  .inputValidator((input: unknown) => z.object({lessonId:z.string().uuid(), resume:z.boolean().optional(), rebuild:z.boolean().optional()}).parse(input))
   .handler(async ({data, context}) => {
     const {data:roles, error:roleError} = await context.supabase.from("user_roles").select("role").eq("user_id",context.userId);
     if (roleError) throw roleError;
@@ -33,6 +33,7 @@ export const generateFormattedPage = createServerFn({ method: "POST" })
     const {data:lesson, error} = await context.supabase.from("lessons").select("id,user_id,image_path").eq("id",data.lessonId).single();
     if(error || !lesson) throw new Error("الصفحة غير موجودة");
     const admin = memberships.includes("admin");
+    if(data.rebuild && !admin) throw new Error("إعادة تنسيق الرسومات مخصصة للإدارة.");
     if (!canReadFormatted(memberships) && !(memberships.includes("writer") && lesson.user_id === context.userId)) throw new Error("غير مسموح");
     // Privileged writes only after authenticating and authorizing the caller.
     const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
@@ -40,7 +41,7 @@ export const generateFormattedPage = createServerFn({ method: "POST" })
     const {data:state} = await supabaseAdmin.from("notebook_generation_state").select("paused,reason").eq("id",1).maybeSingle();
     if(state?.paused) return {status:"error",message:state.reason || "تم إيقاف التحويل مؤقتاً؛ يرجى التواصل مع الإدارة."};
     const {data:existing} = await supabaseAdmin.from("formatted_pages").select("status,updated_at").eq("lesson_id",lesson.id).maybeSingle();
-    if(existing?.status === "ready") return {status:"ready",message:null};
+    if(existing?.status === "ready" && !data.rebuild) return {status:"ready",message:null};
     if(existing?.status === "processing" && Date.now()-Date.parse(existing.updated_at)<5*60*1000) return {status:"processing",message:null};
     const claim = await supabaseAdmin.from("formatted_pages").upsert({lesson_id:lesson.id,status:"processing",error_message:null,updated_at:new Date().toISOString()});
     if(claim.error) throw claim.error;
@@ -59,7 +60,7 @@ export const generateFormattedPage = createServerFn({ method: "POST" })
       const status = cause && typeof cause === "object" && "statusCode" in cause ? Number(cause.statusCode) : 0;
       const message = status === 402 || status === 403 ? "خدمة التحويل متوقفة بسبب رصيد أو صلاحيات خدمة الذكاء الاصطناعي. على الإدارة إعادة تفعيلها." : "تعذّر تنسيق الصفحة؛ يمكنك المحاولة مجدداً أو قراءة الصورة الأصلية.";
       if(status===402 || status===403 || status===401 || status===404) await supabaseAdmin.from("notebook_generation_state").upsert({id:1,paused:true,reason:message});
-      await supabaseAdmin.from("formatted_pages").update({status:"error",error_message:message,updated_at:new Date().toISOString()}).eq("lesson_id",lesson.id);
+      await supabaseAdmin.from("formatted_pages").update({status:existing?.status === "ready" ? "ready" : "error",error_message:message,updated_at:new Date().toISOString()}).eq("lesson_id",lesson.id);
       return {status:"error",message};
     }
   });
