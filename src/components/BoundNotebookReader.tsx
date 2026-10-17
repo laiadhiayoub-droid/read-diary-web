@@ -1,12 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useServerFn } from "@tanstack/react-start";
-import { ArrowLeft, ArrowRight, BookOpen, FileText, Loader2, Lock, RefreshCw, ZoomIn, ZoomOut, Download } from "lucide-react";
+import { ArrowLeft, ArrowRight, BookOpen, Check, FileText, Loader2, Lock, Pencil, RefreshCw, X, ZoomIn, ZoomOut, Download, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
-import { generateFormattedPage } from "@/lib/notebook.functions";
-import { canReadFormatted, LOCKED_NOTEBOOK_MESSAGE, notebookDocumentSchema } from "@/lib/notebook";
+import { generateFormattedPage, updateFormattedPage } from "@/lib/notebook.functions";
+import { canReadFormatted, LOCKED_NOTEBOOK_MESSAGE, notebookDocumentSchema, type NotebookDocument } from "@/lib/notebook";
 
 type Page = {id:string;title:string;image_path:string;subject:string};
 export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:Page[];initialId:string|null;roles:string[];onClose:()=>void}) {
@@ -15,11 +16,17 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
   const [busy,setBusy] = useState(false);
   const [failure,setFailure] = useState<string|null>(null);
   const [scale,setScale] = useState(1);
+  const [editing,setEditing] = useState(false);
+  const [draft,setDraft] = useState<NotebookDocument|null>(null);
+  const [saving,setSaving] = useState(false);
   const generate = useServerFn(generateFormattedPage);
+  const update = useServerFn(updateFormattedPage);
   const allowed = canReadFormatted(roles);
-  useEffect(()=>{setIndex(Math.max(0,pages.findIndex(p=>p.id===initialId)));setMode("original");setFailure(null);},[initialId]);
+  const canEdit = roles.includes("admin") || roles.includes("writer");
+  const pinch = useRef<{d:number;scale:number}|null>(null);
+  useEffect(()=>{setIndex(Math.max(0,pages.findIndex(p=>p.id===initialId)));setMode("original");setFailure(null);setEditing(false);setDraft(null);},[initialId]);
   const page=initialId ? pages[index] : undefined;
-  useEffect(()=>{setScale(1);},[page?.id]);
+  useEffect(()=>{setScale(1);setEditing(false);setDraft(null);},[page?.id]);
   const image = useQuery({queryKey:["bound-image",page?.image_path],enabled:!!page,queryFn:async()=>{
     if(!page) return null;
     const {data,error}=await supabase.storage.from("lessons-images").createSignedUrl(page.image_path,120);
@@ -37,6 +44,32 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
     try { const result=await generate({data:{lessonId:page.id,resume}}); if(result.status==="error")setFailure(result.message); await formatted.refetch(); }
     catch {setFailure("تعذّر تنسيق الصفحة.");} finally {setBusy(false);}
   }
+  function startEdit() {
+    if(!parsed.success) return;
+    setDraft(structuredClone(parsed.data));
+    setEditing(true);
+  }
+  async function saveEdit() {
+    if(!page || !draft || saving) return;
+    setSaving(true);
+    try {
+      await update({data:{lessonId:page.id,document:draft}});
+      toast.success("تم حفظ التعديلات");
+      setEditing(false);setDraft(null);
+      await formatted.refetch();
+    } catch { toast.error("تعذّر حفظ التعديلات"); } finally { setSaving(false); }
+  }
+  function setRunText(bi:number, ri:number, text:string) {
+    setDraft(d=>{ if(!d) return d; const next=structuredClone(d); const run=next.blocks[bi]?.runs[ri]; if(run) run.text=text; return next; });
+  }
+  function onTouchMove(e:React.TouchEvent) {
+    if(e.touches.length!==2) return;
+    const [a,b]=[e.touches[0]!,e.touches[1]!];
+    const d=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+    if(!pinch.current){pinch.current={d,scale};return;}
+    setScale(Math.min(3,Math.max(0.5,pinch.current.scale*(d/pinch.current.d))));
+  }
+  const showSideBySide = mode==="formatted" && allowed && parsed.success && formatted.data?.status==="ready" && image.data && !editing;
   return <Dialog open={!!initialId} onOpenChange={open=>{if(!open)onClose();}}>
     <DialogContent className="w-[96vw] sm:max-w-5xl max-h-[94vh] overflow-hidden p-0 gap-0">
       <DialogTitle className="sr-only">{page?.title || "الكراس"}</DialogTitle>
@@ -49,18 +82,41 @@ export function BoundNotebookReader({pages, initialId, roles, onClose}: {pages:P
         <Button variant="ghost" size="icon" aria-label="تكبير" onClick={()=>setScale(s=>Math.min(3,s+0.25))}><ZoomIn className="size-4"/></Button>
         <Button variant="ghost" size="icon" aria-label="تصغير" onClick={()=>setScale(s=>Math.max(0.5,s-0.25))}><ZoomOut className="size-4"/></Button>
         {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} download={`${page?.title}.jpg`} target="_blank" rel="noreferrer" aria-label="تحميل"><Download className="size-4"/></a></Button>}
+        {image.data && <Button variant="ghost" size="icon" asChild><a href={image.data} target="_blank" rel="noreferrer" aria-label="فتح بالحجم الكامل"><ExternalLink className="size-4"/></a></Button>}
+      </div>}
+      {editing && <div className="flex justify-center gap-2 border-b p-2">
+        <Button size="sm" onClick={saveEdit} disabled={saving}>{saving?<Loader2 className="size-4 animate-spin"/>:<Check className="size-4"/>}حفظ التعديلات</Button>
+        <Button size="sm" variant="outline" disabled={saving} onClick={()=>{setEditing(false);setDraft(null);}}><X className="size-4"/>إلغاء</Button>
       </div>}
       <div className="overflow-y-auto bg-muted p-3 sm:p-6 min-h-64 max-h-[70vh]">
-        {mode==="original" ? image.data ? <img className="mx-auto max-w-full h-auto" style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/> : <p className="text-center py-16">{image.isError?"تعذّر تحميل الصورة.":"جارٍ تحميل الصفحة…"}</p>
+        {mode==="original" ? image.data ? <div className="overflow-auto" style={{touchAction:"pan-x pan-y"}} onTouchMove={onTouchMove} onTouchEnd={()=>{pinch.current=null;}}>
+            <img className="mx-auto max-w-full h-auto select-none" style={{transform:`scale(${scale})`,transformOrigin:"center top"}} src={image.data} alt={page?.title}/>
+          </div> : <p className="text-center py-16">{image.isError?"تعذّر تحميل الصورة.":"جارٍ تحميل الصفحة…"}</p>
         : !allowed ? <div className="text-center py-16 space-y-4"><Lock className="size-9 mx-auto text-primary"/><p>{LOCKED_NOTEBOOK_MESSAGE}</p></div>
+        : editing && draft ? <article className="digital-sheet mx-auto" dir={draft.direction}>
+            <p className="text-xs text-muted-foreground mb-4">عدّل النص مباشرة ثم احفظ. تُحفظ الألوان والتنسيق كما هي.</p>
+            {draft.blocks.map((block,i)=><div key={i} className={`document-block document-${block.kind}`}>
+              {block.runs.map((run,j)=><span key={j} contentEditable suppressContentEditableWarning
+                onBlur={e=>setRunText(i,j,e.currentTarget.textContent ?? "")}
+                className="outline-none focus:bg-secondary/60 rounded-sm px-0.5"
+                style={{color:run.color,backgroundColor:run.highlight ?? "transparent",fontWeight:run.bold?700:400,textDecoration:run.underline?"underline":"none"}}>{run.text}</span>)}
+            </div>)}
+          </article>
         : parsed.success && formatted.data?.status==="ready" ? <>
           {parsed.data.uncertain && <p className="text-sm text-destructive mb-3">توجد أجزاء غير واضحة؛ راجع الصورة الأصلية.</p>}
-          <article className="digital-sheet mx-auto" dir={parsed.data.direction}>
-            {parsed.data.blocks.map((block,i)=><div key={i} className={`document-block document-${block.kind}`}>
-              {block.runs.map((run,j)=><span key={j} style={{color:run.color,backgroundColor:run.highlight ?? "transparent",fontWeight:run.bold?700:400,textDecoration:run.underline?"underline":"none"}}>{run.text}</span>)}
-            </div>)}
-            <footer className="document-footer">{index+1}</footer>
-          </article>
+          {canEdit && <div className="flex justify-end mb-3"><Button size="sm" variant="outline" onClick={startEdit}><Pencil className="size-4"/>تعديل النص</Button></div>}
+          <div className={showSideBySide ? "grid gap-4 lg:grid-cols-2 items-start" : ""}>
+            {showSideBySide && <figure className="hidden lg:block sticky top-0">
+              <img className="w-full h-auto rounded-md border" src={image.data!} alt="الصفحة الأصلية"/>
+              <figcaption className="text-xs text-muted-foreground text-center mt-1">الصورة الأصلية</figcaption>
+            </figure>}
+            <article className="digital-sheet mx-auto" dir={parsed.data.direction}>
+              {parsed.data.blocks.map((block,i)=><div key={i} className={`document-block document-${block.kind}`}>
+                {block.runs.map((run,j)=><span key={j} style={{color:run.color,backgroundColor:run.highlight ?? "transparent",fontWeight:run.bold?700:400,textDecoration:run.underline?"underline":"none"}}>{run.text}</span>)}
+              </div>)}
+              <footer className="document-footer">{index+1}</footer>
+            </article>
+          </div>
         </> : <div className="text-center py-16 space-y-4">
           <FileText className="size-9 mx-auto text-primary"/>
           <p>{failure || formatted.data?.error_message || (formatted.isError?"تعذّر فتح الكراس المنسّق.":"الصفحة المنسّقة ليست جاهزة بعد.")}</p>
