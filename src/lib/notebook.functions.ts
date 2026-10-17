@@ -1,7 +1,25 @@
 import { createServerFn } from "@tanstack/react-start";
 import { z } from "zod";
 import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
-import { canReadFormatted } from "./notebook";
+import { canReadFormatted, notebookDocumentSchema } from "./notebook";
+
+export const updateFormattedPage = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((input: unknown) => z.object({lessonId:z.string().uuid(), document:notebookDocumentSchema}).parse(input))
+  .handler(async ({data, context}) => {
+    const {data:roles, error:roleError} = await context.supabase.from("user_roles").select("role").eq("user_id",context.userId);
+    if (roleError) throw roleError;
+    const memberships = (roles ?? []).map(r=>r.role);
+    const admin = memberships.includes("admin");
+    const {data:lesson} = await context.supabase.from("lessons").select("id,user_id").eq("id",data.lessonId).single();
+    if (!lesson) throw new Error("الصفحة غير موجودة");
+    if (!admin && !(memberships.includes("writer") && lesson.user_id === context.userId)) throw new Error("غير مسموح");
+    const {supabaseAdmin} = await import("@/integrations/supabase/client.server");
+    const {error} = await supabaseAdmin.from("formatted_pages")
+      .update({document:data.document,updated_at:new Date().toISOString()}).eq("lesson_id",data.lessonId).eq("status","ready");
+    if (error) throw error;
+    return {status:"saved" as const};
+  });
 
 export const generateFormattedPage = createServerFn({ method: "POST" })
   .middleware([requireSupabaseAuth])
