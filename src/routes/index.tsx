@@ -447,6 +447,23 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
   const notebook = myLessons.filter((l) => l.subject === subject);
   const roots = notebook.filter((l) => !l.parent_lesson_id);
 
+  function resetForm() {
+    setTitle(""); setDomain(""); setUnit(""); setIsCont(false); setParentId("");
+    setFiles([]); setType("lesson"); setProgress("");
+  }
+
+  async function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<never>((_, reject) => {
+          timer = setTimeout(() => reject(new Error(`timeout:${label}`)), ms);
+        }),
+      ]);
+    } finally { if (timer) clearTimeout(timer); }
+  }
+
   async function submit() {
     if (busy) return;
     if (!title.trim()) { toast.error("عنوان الدرس مطلوب"); return; }
@@ -463,9 +480,12 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
       const rows = [];
       for (const [i, file] of files.entries()) {
         setProgress(`رفع الصفحة ${i+1} من ${files.length}`);
-        const blob = await compressImage(file);
+        const blob = await withTimeout(compressImage(file), 30000, "compress");
         const path = `${userId}/${crypto.randomUUID()}.jpg`;
-        const up = await supabase.storage.from("lessons-images").upload(path, blob, { contentType: "image/jpeg" });
+        const up = await withTimeout(
+          supabase.storage.from("lessons-images").upload(path, blob, { contentType: "image/jpeg" }),
+          60000, "upload",
+        );
         if (up.error) throw up.error;
         uploadedPaths.push(path);
         rows.push({id: !parent && i===0 ? rootId : crypto.randomUUID(), user_id:userId,
@@ -477,18 +497,21 @@ function UploadDialog({ open, onOpenChange, userId, defaultSubject, myLessons, o
       published = true;
       onDone();
       toast.success(`تم ربط ${rows.length} صفحة في الكراس`);
-      let formatFailed=false;
-      for (const [i,row] of rows.entries()) {
-        setProgress(`تنسيق الصفحة ${i+1} من ${rows.length}`);
-        try {const result=await generate({data:{lessonId:row.id}});if(result.status==="error"){formatFailed=true;break;}}
-        catch {formatFailed=true;break;}
-      }
-      if(formatFailed) toast.warning("حُفظت الصور؛ لم يكتمل التنسيق. يمكن للمشترك أو الإدارة تنسيق الصفحات لاحقاً.");
-      setTitle("");setDomain("");setUnit("");setIsCont(false);setParentId("");setFiles([]);
+      // Success: reset the form, close the dialog, and let formatting continue in the background.
+      resetForm();
       onOpenChange(false);
-    } catch {
+      void (async () => {
+        for (const row of rows) {
+          try { const result = await generate({data:{lessonId:row.id}}); if (result.status === "error") break; }
+          catch { break; }
+        }
+      })();
+    } catch (cause) {
       if(!published && uploadedPaths.length) await supabase.storage.from("lessons-images").remove(uploadedPaths);
-      toast.error("حدث خطأ أثناء الرفع؛ لم تُنشر الصفحات.");
+      const message = cause instanceof Error ? cause.message : "";
+      if (message.startsWith("timeout:")) toast.error("انتهت مهلة رفع الصور؛ تحقق من الاتصال وحاول مجدداً.");
+      else if (message) toast.error(`تعذّر رفع الصور: ${message}`);
+      else toast.error("حدث خطأ أثناء الرفع؛ لم تُنشر الصفحات.");
     } finally {setBusy(false);setProgress("");}
   }
 
