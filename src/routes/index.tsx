@@ -429,6 +429,7 @@ function LessonRow({ lesson: l, parent, onOpen, controls }: {
               {contentTypeLabel(l.content_type)}
             </Badge>
             {l.unit && <span>{l.unit}</span>}
+            {l.semester && <span>· {semesterLabel(l.semester)}</span>}
             {l.domain && <span>· {l.domain}</span>}
             {parent && <span className="text-primary inline-flex items-center gap-0.5"><Link2 className="size-3" /> تتمة: {parent.title}</span>}
           </span>
