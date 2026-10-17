@@ -36,6 +36,13 @@
       "when": 1792237496910,
       "tag": "0004_add_lesson_semester",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792239397975,
+      "tag": "0005_create_bookmarks",
+      "breakpoints": true
     }
   ]
 }
