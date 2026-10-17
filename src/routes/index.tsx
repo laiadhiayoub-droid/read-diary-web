@@ -601,6 +601,7 @@ function LessonRow({ lesson: l, parent, author, starred, onStar, onShare, onDele
         </span>
         <span className="flex-1 min-w-0 space-y-0.5">
           <span className="block font-bold truncate">{l.title}</span>
+          {author && <span className="block text-[11px] text-primary font-semibold">{author}</span>}
           <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
             <Badge className={`text-[10px] px-1.5 py-0 ${l.content_type === "summary" ? "bg-summary text-summary-foreground" : ""}`}>
               {contentTypeLabel(l.content_type)}
