@@ -173,10 +173,10 @@ function Index() {
     const cutoff = Date.now() - NEW_DAYS * 24 * 60 * 60 * 1000;
     const map = new Map<string, Book>();
     for (const l of lessons.data ?? []) {
-      if (filters.student !== "all" && l.user_id !== filters.student) continue;
       if (filters.subject !== "all" && l.subject !== filters.subject) continue;
       if (filters.type !== "all" && l.content_type !== filters.type) continue;
       if (filters.semester !== "all" && l.semester !== filters.semester) continue;
+      if (filters.unit !== "all" && l.unit !== filters.unit) continue;
       const key = `${l.user_id}:${l.subject}`;
       const b = map.get(key) ?? { userId: l.user_id, subject: l.subject, count: 0, hasNew: false };
       b.count++;
